@@ -16,6 +16,14 @@ import { readSession } from "@/server/session/context";
  * Every page below this layout is therefore guaranteed a session, and every API
  * route re-checks independently: the gate decides what to *render*, the routes
  * decide what to *allow*.
+ *
+ * This is a portfolio deployment, so there is no sign-in wall: a request with
+ * no valid session is sent to `/api/auth/demo-session`, which provisions a
+ * real session for the seeded Owner persona and sends the visitor straight to
+ * the dashboard — not to `/sign-in`. A Server Component cannot set a cookie
+ * mid-render, which is why that provisioning lives in a route handler rather
+ * than here. Explicit sign-in has not gone anywhere; it is one click away via
+ * "Switch account" in the user menu, for anyone who wants a specific role.
  */
 export default async function AuthenticatedLayout({
   children,
@@ -25,9 +33,7 @@ export default async function AuthenticatedLayout({
   const session = await readSession();
 
   if (!session) {
-    // No `?next=` parameter: an open redirect parameter is a phishing primitive,
-    // and the dashboard is one click away.
-    redirect("/sign-in");
+    redirect("/api/auth/demo-session");
   }
 
   return (

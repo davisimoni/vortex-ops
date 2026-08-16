@@ -3,7 +3,9 @@
 Real-time infrastructure monitoring and incident management for engineering teams —
 now a persisted, authenticated, multi-tenant platform rather than a client-side demo.
 
-Sign in and you land in an **organisation**: your own incidents, your own
+Open it and you land in an **organisation** — no sign-in wall, no credentials
+to type: a real, permission-checked session is auto-provisioned for the
+seeded Owner persona the instant you arrive. Your own incidents, your own
 integrations, your own team, isolated from every other tenant on the same
 deployment. Live metrics stream in over SSE, a threshold engine turns sustained
 breaches into incidents, incidents are assigned and driven through a lifecycle,
@@ -381,13 +383,15 @@ Requires Node 20.9+.
 ```bash
 npm install                    # also runs `prisma generate` (postinstall)
 cp .env.example .env.local     # optional; everything runs with no database at all
-npm run dev                    # http://localhost:3000 → redirects to /sign-in
+npm run dev                    # http://localhost:3000 → straight to /dashboard, no sign-in
 ```
 
-Sign in with any seeded demo account — the sign-in page lists them, with the
-password shown inline unless `VORTEX_DEMO_PASSWORD` is set (default:
-`vortex-demo-2026`). Ada Okafor is Owner at **Acme Corp** and Viewer at
-**Stark Industries**; the organisation switcher in the header moves between them.
+No credentials to type: a first visit auto-provisions a real session for Ada
+Okafor, Owner at **Acme Corp** — the organisation switcher in the header moves
+between tenants. To try a specific role instead (DevOps, Viewer, or Ada's own
+Viewer seat at **Stark Industries**), open **Switch account** from the user
+menu — the sign-in page lists every seeded account, with the password shown
+inline unless `VORTEX_DEMO_PASSWORD` is set (default: `vortex-demo-2026`).
 
 | Command | What it does |
 |---|---|
@@ -420,7 +424,9 @@ POST /api/auth/sign-in  ────────────▶  scrypt verify �
                                         (httpOnly, sameSite=lax, secure in prod)
 
 GET any page  ──────────────────────▶  (app)/layout.tsx: readSession()
-                                        no session → redirect /sign-in
+                                        no session → redirect /api/auth/demo-session
+                                          (provisions the demo Owner, same cookie
+                                           helpers as sign-in, redirects → /dashboard)
                                         session found → resolve org + role +
                                         effective permissions, hand to client
                                         via <SessionProvider>
@@ -525,8 +531,32 @@ real to demonstrate from the first `npm run dev`.
 
 ## Authentication & sessions
 
-Password auth, deliberately unglamorous:
+A portfolio deployment has no sign-in wall: every visitor lands straight on
+the dashboard, auto-signed in as the seeded "Owner at Acme Corp" persona,
+zero clicks. Explicit sign-in — to try a specific role instead — is one click
+away, never a requirement.
 
+- **No sign-in wall, by design.** `(app)/layout.tsx` still gates every page on
+  a valid session, but a request that arrives with none is no longer sent to
+  `/sign-in` — it is sent to `GET /api/auth/demo-session`, which provisions a
+  real session for the seeded demo Owner and redirects to `/dashboard`. This
+  is not a second, weaker auth path: it signs the cookie with the exact same
+  `encodeSession`/`sessionCookie` helpers `/api/auth/sign-in` uses, pre-filled
+  with a fixed identity instead of a submitted password. Every write that
+  identity makes afterwards is permission-checked and audited exactly like a
+  password sign-in — the audit trail records it as `auth.demo_session`
+  (`metadata.auto: true`) rather than letting it read as a real credentialed
+  login.
+- **A route handler, not the layout itself, does the provisioning** — Next.js
+  refuses to let a Server Component mutate cookies mid-render, so the actual
+  cookie-setting has to happen in a route handler the layout redirects to. It
+  is rate-limited (30/min per client) the same way `/api/auth/sign-in` is: an
+  ordinary visitor never gets near that limit, only a script hitting the
+  endpoint directly, never sending the cookie back, would.
+- **Explicit sign-in has not gone anywhere.** "Switch account" in the user menu
+  clears the session and lands on the real picker — the only way to try a
+  DevOps or Viewer's permission set specifically, or Stark Industries instead
+  of Acme, rather than the default Owner guest.
 - **scrypt** for password hashing (`N=2¹⁶, r=8, p=1`, ~100 ms/verify) — memory-hard,
   and it ships in Node's standard library, so there is no native module to
   compile on a machine that does not have one. Parameters are stored *in* the
@@ -545,11 +575,11 @@ Password auth, deliberately unglamorous:
   `readSession()` re-checks the membership and re-resolves the role against the
   database on **every** request, so a permission revoked a second ago is revoked
   now, not whenever the cookie happens to expire.
-- **The auth gate is a layout, not middleware.** `(app)/layout.tsx` calls
-  `readSession()` server-side and redirects to `/sign-in` if there is none —
-  deliberately not Next.js middleware, which defaults to the edge runtime where
-  `node:crypto` (used to sign and verify the cookie) is unavailable. One
-  implementation of session verification, for pages and API routes both.
+- **The auth gate is a layout, not middleware.** Deliberately not Next.js
+  middleware, which defaults to the edge runtime where `node:crypto` (used to
+  sign and verify the cookie) is unavailable. One implementation of session
+  verification, for pages and API routes both — the demo-session route handler
+  reuses it rather than adding a second one.
 
 ---
 
@@ -791,6 +821,7 @@ src/
 │   │   ├── dashboard/ dashboard/logs/ incidents/ integrations/ settings/team/
 │   ├── api/
 │   │   ├── auth/sign-in, sign-out/       # scrypt verify, session cookie
+│   │   ├── auth/demo-session/            # no-sign-in-wall: auto-provisions the demo Owner
 │   │   ├── session/, session/organization/
 │   │   ├── incidents/, incidents/[id]/
 │   │   ├── integrations/, integrations/[id]/, integrations/test/, integrations/trigger/

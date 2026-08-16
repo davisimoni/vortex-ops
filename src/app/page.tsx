@@ -1,12 +1,10 @@
 import { redirect } from "next/navigation";
 
-import { readSession } from "@/server/session/context";
-
 /**
- * The product has no marketing surface: signed in, the dashboard is the front
- * door; signed out, the sign-in page is.
+ * The product has no marketing surface: the dashboard is the front door,
+ * full stop. `(app)/layout.tsx`'s gate provisions a real demo session for
+ * anyone arriving with none — there is no session state to branch on here.
  */
-export default async function HomePage() {
-  const session = await readSession();
-  redirect(session ? "/dashboard" : "/sign-in");
+export default function HomePage() {
+  redirect("/dashboard");
 }

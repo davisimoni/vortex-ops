@@ -14,7 +14,7 @@ export function UserMenu() {
   const previewing = useIsPreviewing();
 
   const [open, setOpen] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
+  const [switchingAccount, setSwitchingAccount] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -26,8 +26,17 @@ export function UserMenu() {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, [open]);
 
-  const signOut = async (): Promise<void> => {
-    setSigningOut(true);
+  /**
+   * Clears the current session and lands on the real sign-in picker.
+   *
+   * There is no "just sign out" any more — `(app)/layout.tsx` re-provisions a
+   * fresh demo session for anyone with no cookie, so the only meaningful
+   * outcome of clearing this one is landing somewhere you can pick a
+   * *specific* identity instead (a DevOps or Viewer role, or a different
+   * organisation) rather than the default Owner-at-Acme guest.
+   */
+  const switchAccount = async (): Promise<void> => {
+    setSwitchingAccount(true);
     await apiPost("/api/auth/sign-out", {});
     // Hard navigation: it must land past the authenticated layout's server-side
     // session check, which a client-side route change would not re-evaluate.
@@ -76,12 +85,12 @@ export function UserMenu() {
           <button
             type="button"
             role="menuitem"
-            disabled={signingOut}
-            onClick={() => void signOut()}
+            disabled={switchingAccount}
+            onClick={() => void switchAccount()}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink transition-colors hover:bg-raised disabled:opacity-60"
           >
             <LogOut aria-hidden="true" className="size-3.5 text-muted" />
-            {signingOut ? "Signing out…" : "Sign out"}
+            {switchingAccount ? "Switching…" : "Switch account"}
           </button>
         </div>
       ) : null}

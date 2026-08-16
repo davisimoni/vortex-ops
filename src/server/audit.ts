@@ -96,6 +96,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   "auth.sign_in": "Signed in",
   "auth.sign_out": "Signed out",
   "auth.sign_in_failed": "Failed sign-in",
+  "auth.demo_session": "Auto-provisioned demo session",
   "session.switch_organization": "Switched organisation",
   "incident.create": "Declared incident",
   "incident.transition": "Changed incident status",

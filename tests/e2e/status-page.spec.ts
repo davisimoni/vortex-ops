@@ -46,8 +46,11 @@ test.describe("Public status page", () => {
   });
 
   test("is not gated by the app's authentication layout", async ({ page }) => {
-    // A bare visit must never bounce to /sign-in the way every other route does.
+    // Unlike every route under (app), a bare visit here must never redirect
+    // anywhere at all — not to a demo session, not to sign-in. No cookie
+    // should be set by loading this page.
     await page.goto("/status/acme-corp");
     await expect(page).toHaveURL(/\/status\/acme-corp$/);
+    expect((await page.context().cookies()).length).toBe(0);
   });
 });

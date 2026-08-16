@@ -60,17 +60,54 @@ async function submitSignIn(page: Page, email: string, password: string): Promis
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
-test.describe("Authentication gate", () => {
-  test("redirects an unauthenticated visitor to sign-in", async ({ page }) => {
+test.describe("Automatic demo session — no sign-in wall", () => {
+  test("lands an anonymous visitor straight on the dashboard, auto-signed in as the demo Owner", async ({
+    page,
+  }) => {
     await page.goto("/dashboard");
-    await expect(page).toHaveURL(/\/sign-in$/);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    // Ada Okafor, Owner @ Acme Corp — the seeded default persona, not a
+    // generic "guest" placeholder identity.
+    await expect(page.getByRole("button", { name: /Ada Okafor/ })).toBeVisible();
   });
 
-  test("redirects the root to sign-in when signed out", async ({ page }) => {
+  test("the root also lands on the dashboard with no session required", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveURL(/\/sign-in$/);
+    await expect(page).toHaveURL(/\/dashboard$/);
   });
 
+  test("a deep link also provisions the session, even though it still lands on the dashboard first", async ({
+    page,
+  }) => {
+    // "Land directly on the dashboard" is the explicit requirement — a first,
+    // cookie-less visit always surfaces there, never at whatever deeper page
+    // was originally requested. What this proves is that the provisioning
+    // step underneath still ran: a second navigation, now with the cookie
+    // already set, reaches the deeper page normally.
+    await page.goto("/integrations");
+    await expect(page).toHaveURL(/\/dashboard$/);
+
+    await page.goto("/integrations");
+    await expect(page).toHaveURL(/\/integrations$/);
+  });
+
+  test("the auto-provisioned session is real, not a read-only shell — it grants Owner permissions", async ({
+    page,
+  }) => {
+    await page.goto("/dashboard");
+    await page.goto("/integrations");
+    await expect(page.getByRole("button", { name: "New integration" })).toBeEnabled();
+  });
+
+  test("survives a reload, the same way a real sign-in would", async ({ page }) => {
+    await page.goto("/dashboard");
+    await page.reload();
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByRole("button", { name: /Ada Okafor/ })).toBeVisible();
+  });
+});
+
+test.describe("Authentication gate", () => {
   test("refuses API access with 401, not a redirect", async ({ request }) => {
     // An API route cannot redirect a fetch call usefully; it has to answer
     // with a status the caller can branch on.
@@ -113,17 +150,33 @@ test.describe("Authentication gate", () => {
   });
 });
 
-test.describe("Sign-out", () => {
-  test("clears the session and returns to sign-in on the next visit", async ({ page }) => {
+test.describe("Switch account", () => {
+  test("clears an explicit session and lands on the real sign-in picker", async ({ page }) => {
     await gotoSignIn(page);
     await submitSignIn(page, ACCOUNTS.acmeOwner.email, DEMO_PASSWORD);
     await expect(page).toHaveURL(/\/dashboard$/);
 
     await page.getByRole("button", { name: ACCOUNTS.acmeOwner.name }).click();
-    await page.getByRole("menuitem", { name: "Sign out" }).click();
+    await page.getByRole("menuitem", { name: "Switch account" }).click();
 
+    // /sign-in only stays reachable because the cookie was just cleared —
+    // with a session present it redirects straight back to the dashboard.
     await expect(page).toHaveURL(/\/sign-in$/);
+  });
+
+  test("a cleared session re-provisions the demo guest on the next dashboard visit, not a sign-in wall", async ({
+    page,
+  }) => {
+    await gotoSignIn(page);
+    await submitSignIn(page, ACCOUNTS.acmeOwner.email, DEMO_PASSWORD);
+    await expect(page).toHaveURL(/\/dashboard$/);
+
+    await page.getByRole("button", { name: ACCOUNTS.acmeOwner.name }).click();
+    await page.getByRole("menuitem", { name: "Switch account" }).click();
+    await expect(page).toHaveURL(/\/sign-in$/);
+
     await page.goto("/dashboard");
-    await expect(page).toHaveURL(/\/sign-in$/);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByRole("button", { name: /Ada Okafor/ })).toBeVisible();
   });
 });
