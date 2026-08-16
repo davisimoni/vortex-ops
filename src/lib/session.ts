@@ -25,6 +25,8 @@ export interface StorageStatus {
   readonly durable: boolean;
   /** Set when a database was configured but could not be used. */
   readonly degradedReason: string | null;
+  /** True when `driver` is "prisma" via the auto-detected local SQLite file, not an explicit DATABASE_URL. */
+  readonly autoDetectedSqlite: boolean;
 }
 
 export interface SessionSnapshot {

@@ -259,3 +259,21 @@ test.describe("Switch account", () => {
     await expect(page.getByRole("button", { name: /Ada Okafor/ })).toBeVisible();
   });
 });
+
+test.describe("Public status page shortcut", () => {
+  test("the user menu links to this organisation's own public status page, opened in a new tab", async ({
+    page,
+  }) => {
+    await gotoSignIn(page);
+    await submitSignIn(page, ACCOUNTS.acmeOwner.email, DEMO_PASSWORD);
+    await expect(page).toHaveURL(/\/dashboard$/);
+
+    await page.getByRole("button", { name: ACCOUNTS.acmeOwner.name }).click();
+    const link = page.getByRole("menuitem", { name: "View public status page" });
+
+    // Acme's slug, not a hardcoded one — the same link for a different
+    // organisation's session must point at that organisation's own page.
+    await expect(link).toHaveAttribute("href", "/status/acme-corp");
+    await expect(link).toHaveAttribute("target", "_blank");
+  });
+});

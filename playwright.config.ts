@@ -10,11 +10,12 @@ const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${PORT}`;
  * things a real deployment does not (unoptimised hydration, different error
  * overlays), and an E2E suite that only passes in dev is worth very little.
  *
- * The web server runs with `DATABASE_URL` explicitly cleared, forcing the
- * in-process storage fallback rather than whatever the shell's ambient
- * environment happens to have set. That makes the suite self-contained (no
- * database to provision in CI) and, more importantly, deterministic: every run
- * starts from the same seeded fixtures.
+ * The web server runs with `DATABASE_URL` explicitly cleared and
+ * `VORTEX_FORCE_MEMORY_STORAGE=1` set, forcing the in-process storage fallback
+ * rather than whatever the shell's ambient environment — or a real
+ * `prisma/dev.db` a developer has pushed locally — happens to have set. That
+ * makes the suite self-contained (no database to provision in CI) and, more
+ * importantly, deterministic: every run starts from the same seeded fixtures.
  *
  * That fallback is also *shared, mutable, process-wide state* — unlike the
  * pre-persistence version of this app, where every browser context held its
@@ -63,8 +64,11 @@ export default defineConfig({
     stdout: "ignore",
     stderr: "pipe",
     env: {
-      // Force the in-memory driver — see the module comment above.
+      // Force the in-memory driver — see the module comment above. Both are
+      // needed: an unset DATABASE_URL alone would still auto-detect a local
+      // prisma/dev.db if one happens to exist on disk.
       DATABASE_URL: "",
+      VORTEX_FORCE_MEMORY_STORAGE: "1",
       VORTEX_SESSION_SECRET: "e2e-session-secret-not-for-production-use-0123456789",
       // 64 hex chars = 32 bytes, as `src/server/crypto/secrets.ts` requires.
       VORTEX_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",

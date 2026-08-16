@@ -78,11 +78,17 @@ test.describe("Live metrics dashboard", () => {
     );
   });
 
-  test("shows the in-memory storage banner in the E2E fixture environment", async ({ page }) => {
-    // playwright.config.ts forces DATABASE_URL="" for the web server, so the
-    // fallback banner is expected here — this is the "no database configured
-    // at all" case, not the "configured but unreachable" one.
-    await expect(page.getByText(/Running on in-memory storage/)).toBeVisible();
+  test("shows the demo-mode storage badge in the E2E fixture environment", async ({ page, isMobile }) => {
+    // The badge is header chrome hidden below the `sm` breakpoint, same as the
+    // divider next to it — mobile's already-tight topbar keeps only the
+    // always-relevant health/stream controls. /api/health carries the same
+    // data unconditionally; see api.spec.ts.
+    test.skip(isMobile, "Storage badge is sm+ only — see the topbar's other hidden-below-sm chrome.");
+
+    // playwright.config.ts forces VORTEX_FORCE_MEMORY_STORAGE=1 for the web
+    // server, so the "no database configured at all" badge is expected here —
+    // not the "configured but unreachable" degraded state.
+    await expect(page.getByText("Storage: Demo Mode")).toBeVisible();
   });
 });
 

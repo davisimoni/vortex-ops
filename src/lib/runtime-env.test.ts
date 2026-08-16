@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { isProductionDeployment } from "@/lib/runtime-env";
+import { isProductionDeployment, isVercelRuntime } from "@/lib/runtime-env";
 
 const ORIGINAL_VORTEX_ENV = process.env.VORTEX_ENV;
 const ORIGINAL_VERCEL_ENV = process.env.VERCEL_ENV;
+const ORIGINAL_VERCEL = process.env.VERCEL;
 
 afterEach(() => {
   if (ORIGINAL_VORTEX_ENV === undefined) delete process.env.VORTEX_ENV;
@@ -11,6 +12,9 @@ afterEach(() => {
 
   if (ORIGINAL_VERCEL_ENV === undefined) delete process.env.VERCEL_ENV;
   else process.env.VERCEL_ENV = ORIGINAL_VERCEL_ENV;
+
+  if (ORIGINAL_VERCEL === undefined) delete process.env.VERCEL;
+  else process.env.VERCEL = ORIGINAL_VERCEL;
 });
 
 describe("isProductionDeployment", () => {
@@ -48,5 +52,23 @@ describe("isProductionDeployment", () => {
     } finally {
       Object.assign(process.env, { NODE_ENV: originalNodeEnv });
     }
+  });
+});
+
+describe("isVercelRuntime", () => {
+  it("is false with VERCEL unset — plain local development", () => {
+    delete process.env.VERCEL;
+    expect(isVercelRuntime()).toBe(false);
+  });
+
+  it("is true on any Vercel environment, not only production", () => {
+    process.env.VERCEL = "1";
+    process.env.VERCEL_ENV = "preview";
+    expect(isVercelRuntime()).toBe(true);
+  });
+
+  it("is false for any value other than the literal string \"1\"", () => {
+    process.env.VERCEL = "true";
+    expect(isVercelRuntime()).toBe(false);
   });
 });

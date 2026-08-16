@@ -40,11 +40,14 @@ export interface BadgeProps {
   readonly dot?: boolean;
   readonly children: ReactNode;
   readonly className?: string;
+  /** Native tooltip for detail that does not belong in the chip's own text. */
+  readonly title?: string;
 }
 
-export function Badge({ tone = "neutral", icon: Icon, dot = false, children, className }: BadgeProps) {
+export function Badge({ tone = "neutral", icon: Icon, dot = false, children, className, title }: BadgeProps) {
   return (
     <span
+      title={title}
       className={cn(
         "inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-2 py-0.5",
         "text-xs font-medium leading-5",

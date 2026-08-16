@@ -12,8 +12,10 @@ breaches into incidents, incidents are assigned and driven through a lifecycle,
 and every state change can page a real Slack channel, PagerDuty service, Discord
 channel or Telegram chat. Every write is authorised server-side against a
 per-organisation permission table, recorded on an append-only audit trail, and
-exportable as a SOC 2-style compliance report. All of it survives a restart when
-a database is configured — and runs with **zero setup** when one is not.
+exportable as a SOC 2-style compliance report from a dedicated **Audit &
+compliance** page. All of it survives a restart when a database is configured,
+or once `npm run db:push` has produced a local SQLite file — and runs with
+**zero setup**, honestly labelled as such, when neither is present.
 
 A one-click **chaos drill** opens a real incident, pages real integrations and
 visibly tanks the health score to prove the whole pipeline actually works. A
@@ -40,6 +42,7 @@ seconds, each step landing on the real thing, not a screenshot of it.
 - [Running it](#running-it)
 - [Architecture](#architecture)
 - [Persistence — real database, or none at all](#persistence--real-database-or-none-at-all)
+- [Storage indicator](#storage-indicator)
 - [Authentication & sessions](#authentication--sessions)
 - [Multi-tenancy](#multi-tenancy)
 - [Real outbound notifications](#real-outbound-notifications)
@@ -128,8 +131,14 @@ seconds, each step landing on the real thing, not a screenshot of it.
   so in words, not just in behaviour.
 - The last Owner cannot be demoted or removed.
 
-### 5. Compliance: audit trail & exports — `/incidents`, `/settings/team`
+### 5. Compliance: audit trail & exports — `/audit`, `/incidents`, `/settings/team`
 
+- **A dedicated Audit & compliance page** (`/audit`, linked from the primary
+  nav), so a SOC 2 evidence request or an access review is a click from the
+  sidebar rather than something found by scrolling to the bottom of Team &
+  access. The export card and the audit trail also still render there and on
+  `/incidents` — someone mid-incident-review should not have to navigate away
+  for the export they need.
 - **Append-only audit log** — every write records who, what, which organisation,
   when, from where, and whether it *succeeded or was denied*. Nothing in the
   application can edit or delete a row.
@@ -463,14 +472,29 @@ first argument on every tenant-scoped method — there is no overload that reads
 data without saying whose it is, so the multi-tenancy boundary is enforced by the
 type signature, not by remembering to add a `WHERE` clause.
 
-**Driver selection is automatic and never fails the build.** `DATABASE_URL` unset
-→ `MemoryRepository`. Set but the Prisma client cannot connect → the error is
-logged, `/api/health` reports it, and the app **falls back to `MemoryRepository`
-rather than refusing to boot.** The Prisma client itself is loaded with a dynamic
-`import()`, so a missing generated client degrades the same way instead of
-breaking `next build`. Both paths are exercised: `src/server/repository/memory.test.ts`
-covers the fallback directly; the same contract runs for real against SQLite in
-manual testing (`npm run db:push && DATABASE_URL=file:./prisma/dev.db npm start`).
+**Driver selection is automatic and never fails the build.** In order: an
+explicit `DATABASE_URL` → Prisma against it. Unset, but `prisma/dev.db` already
+exists at its conventional path and this is not Vercel (`isVercelRuntime()`,
+whose filesystem is read-only outside `/tmp`) → Prisma against that file,
+found with no configuration at all. Neither → `MemoryRepository`. A configured
+database that cannot connect is logged, reported at `/api/health`, and **falls
+back to `MemoryRepository` rather than refusing to boot** — the same fallback
+the "neither" case uses, just for a different reason, which is exactly why
+`getStorageStatus()` returns *why* alongside the driver rather than only the
+driver itself. The Prisma client is loaded with a dynamic `import()`, so a
+missing generated client degrades the same way instead of breaking `next build`.
+Every path is exercised: `src/server/repository/memory.test.ts` covers the
+in-memory fallback directly; the same contract runs for real against SQLite in
+manual testing (`npm run db:push && npm start`, no `DATABASE_URL` needed — the
+auto-detection finds it). The relative SQLite path resolves against
+`prisma/schema.prisma`'s own directory, not the project root, so an *explicit*
+`DATABASE_URL` needs `file:./dev.db` — not `file:./prisma/dev.db`, despite
+`npm run db:push` printing `prisma/dev.db` as the file it created and every
+intuition suggesting otherwise (the auto-detection path sidesteps the question
+entirely by resolving an absolute path itself). Confirmed empirically:
+`file:./prisma/dev.db` silently fails to connect (Prisma looks for
+`prisma/prisma/dev.db`), for both the CLI and a `PrismaClient` constructed
+with `datasourceUrl` at runtime.
 
 **Layering, unchanged in spirit.** Pure logic lives in `src/lib` and `src/server`
 with no React and, below the repository boundary, no I/O — the metric generator,
@@ -490,18 +514,40 @@ there is no cascading render.
 
 ```bash
 # Zero setup — the default. Nothing to install, nothing to configure.
+npm run db:push   # creates prisma/dev.db — found automatically from here on, no DATABASE_URL needed
 npm run dev
 
-# SQLite — one file, no server to run.
-npm run db:push                                  # creates prisma/dev.db
-echo 'DATABASE_URL="file:./prisma/dev.db"' >> .env.local
-npm run dev
-
-# PostgreSQL / Supabase
+# PostgreSQL / Supabase — the only path that actually persists on Vercel
 echo 'DATABASE_URL="postgresql://user:pass@host:5432/db?sslmode=require"' >> .env.local
 npm run db:push:postgres
 npm run dev
 ```
+
+**`DATABASE_URL` unset does not mean in-memory any more — it means "look for a
+local SQLite file first."** `npm run db:push` alone is now enough for an
+incident created in the UI to survive a page reload: `selectRepository()`
+(`src/server/repository/index.ts`) checks, in order, an explicit
+`DATABASE_URL`; failing that, `prisma/dev.db` at its conventional path *if this
+process is not running on Vercel*; failing that, the in-process store. Setting
+`DATABASE_URL` explicitly (SQLite `file:./dev.db` or a Postgres URL) still
+works exactly as before and always wins.
+
+The Vercel exclusion is not caution for its own sake — outside `/tmp`, a
+deployed function's filesystem is **read-only**, so a committed `prisma/dev.db`
+would be readable there but every write would fail with a confusing database
+error instead of the honest, already-tested in-memory fallback just working.
+`isVercelRuntime()` in `src/lib/runtime-env.ts` is what draws that line. **On
+Vercel, this means `DATABASE_URL` genuinely has no free substitute** — set a
+real Postgres URL (Vercel Postgres, Neon and Supabase all have first-class
+Vercel integrations), or accept that data resets on every cold start. The
+header badge says which of the two is currently true; see
+[Storage indicator](#storage-indicator) below.
+
+The E2E suite sets `VORTEX_FORCE_MEMORY_STORAGE=1` (`playwright.config.ts`) to
+keep this auto-detection from finding a real `prisma/dev.db` a developer has
+pushed locally mid test run — the suite's "every run starts from the same
+seeded fixtures" guarantee depends on the driver being memory, deterministically,
+regardless of what else exists on disk in that working directory.
 
 `prisma/schema.prisma` (SQLite) and `prisma/schema.postgresql.prisma` (Postgres)
 declare identical models — the Postgres file is **generated** from the SQLite one
@@ -526,6 +572,31 @@ produces **two organisations** on first boot — Acme Corp (production) and Star
 Industries (staging) — with distinct incidents, integrations and a shared user
 whose role differs between them, so the multi-tenancy boundary has something
 real to demonstrate from the first `npm run dev`.
+
+---
+
+## Storage indicator
+
+A compact chip in the header (`src/components/layout/storage-badge.tsx`), not
+the full-width banner earlier versions of this README described. The banner
+was right to say what it said — it just said it at the wrong size for a fact
+that is true on every single page load. Three states, distinguished by colour
+and icon rather than by paragraph:
+
+- **"Storage: Persistent"** (green) — `DATABASE_URL` set, or a local SQLite
+  file auto-detected. Hovering names which.
+- **"Storage: Demo Mode"** (neutral) — no database reachable at all. This is
+  the honest, documented zero-setup path, not an error — Vercel with no
+  `DATABASE_URL` configured lands here by design, and the badge says so rather
+  than pretending otherwise.
+- **"Storage: Degraded"** (red) — `DATABASE_URL` *was* set and Prisma could
+  not use it. The one state that keeps a strong visual: this is a real
+  misconfiguration risking silent data loss, not the zero-setup path, and it
+  stays loud here, in `GET /api/health`, and in the server logs.
+
+Same three states `getStorageStatus()` (`src/server/repository/index.ts`)
+already reported to `/api/health` — the badge is a second, human-facing view
+onto data that already existed, not a new source of truth.
 
 ---
 
@@ -785,7 +856,7 @@ rather than reporting a success for a message that never left the building.
 
 ## Testing
 
-**355 unit tests** across 21 files, node environment, ~15 seconds:
+**358 unit tests** across 21 files, node environment, ~15 seconds:
 
 | Area | What is asserted |
 |---|---|
@@ -801,7 +872,7 @@ rather than reporting a success for a message that never left the building.
 | `secrets` | AES-256-GCM round-trip, tamper detection, key-derivation fallback, mask formatting |
 | `password` | scrypt round-trip, malformed-hash handling, cost-parameter rehash detection |
 | `cookie` | Sign/verify round-trip, tamper and expiry rejection, clock-skew tolerance, the secret-required check firing on Vercel production detected via `VERCEL_ENV` alone |
-| `runtime-env` | `isProductionDeployment()` — `VORTEX_ENV`, `VERCEL_ENV`, both, neither, and confirming it deliberately ignores `NODE_ENV` |
+| `runtime-env` | `isProductionDeployment()` — `VORTEX_ENV`, `VERCEL_ENV`, both, neither, and confirming it deliberately ignores `NODE_ENV`; `isVercelRuntime()` — any Vercel environment vs. none, and that only the literal `"1"` counts |
 | `compliance/report` | MTTR/MTTA/attainment computation, per-service and per-severity breakdowns, window scoping |
 | `repository/memory` | Tenant isolation, credential encryption round-trip through the public/private shape split, append-only audit ordering, RBAC override CRUD, slug lookup — the fallback driver held to the same contract the database is |
 | `stores` | Client-store pure logic only (sample folding, draft validation, the chaos spike's decay curve and per-metric multiplier) — mutation logic now lives server-side and is covered directly against the repository and via E2E |
@@ -811,15 +882,19 @@ rather than reporting a success for a message that never left the building.
 | `log-format` | Wire-format parsing with a graceful fallback for pretty/malformed lines, the level+text filter, plain-text export |
 | `status-page` | Per-service status derivation, aggregate tier, the 90-day uptime grid's day-boundary math, uptime percentage, and — the load-bearing one — that `redactIncidentForStatusPage` actually drops `assignment`/`notification` timeline entries and never carries an `actor` field |
 
-**254 E2E checks** (chromium + mobile Safari) across twelve spec files: auth
-(covering the no-sign-in-wall flow — auto-provisioning, deep links, "Switch
-account", and a dedicated circuit-breaker suite that forges an unverifiable
-session cookie to prove `/api/auth/demo-session` cannot loop more than once —
-alongside explicit sign-in), dashboard, incidents, integrations (including the
-quick-test helper), multi-tenant, rbac, compliance, API surface (including a
-byte-level check that `/og` returns a real PNG), chaos, logs, the public
-status page, the guided demo tour, and the original theme/accessibility
-checks.
+**256 E2E checks** (chromium + mobile Safari; 255 run, one skipped by design —
+the storage badge is `sm+`-only chrome, see below) across twelve spec files:
+auth (covering the no-sign-in-wall flow — auto-provisioning, deep links,
+"Switch account", the public-status-page shortcut in the user menu, and a
+dedicated circuit-breaker suite that forges an unverifiable session cookie to
+prove `/api/auth/demo-session` cannot loop more than once — alongside explicit
+sign-in), dashboard (including the storage indicator badge), incidents,
+integrations (including the quick-test helper), multi-tenant, rbac,
+compliance (including the dedicated `/audit` page, reachable from the sidebar
+on desktop and from the mobile nav drawer alike), API surface (including a
+byte-level check that `/og` returns a real PNG, and that `/api/health` reports
+`autoDetectedSqlite`), chaos, logs, the public status page, the guided demo
+tour, and the original theme/accessibility checks.
 
 ### Bugs the suite caught this round
 
@@ -838,6 +913,7 @@ Listed because a test that never fails proved nothing:
 | E2E | A test written to mirror an existing one omitted its `await expect(page).toHaveURL(...)` wait after signing in before clicking the user menu — Playwright's auto-waiting on the *next* locator eventually found the button, but the click landed mid-navigation and the dropdown never opened, hanging until the 30s test timeout. The sibling test right above it had the wait and passed instantly; the fix was copying it forward |
 | Production report + manual repro | The real one: `ERR_TOO_MANY_REDIRECTS` on Vercel. Both `secret()`'s "refuse to boot without a session secret" check and the cookie's `secure` flag were gated on `VORTEX_ENV=production` — an app-level label that has to be set by hand and Vercel never sets automatically. Left unset, the app silently took the *development* branch instead of failing loudly: each serverless instance generated its own random ephemeral signing secret, so a session cookie signed by one instance failed to verify on the next request if it landed on another, and the no-sign-in-wall flow retried automatically on every failure — a real, reproducible infinite loop, invisible to local testing because a single long-running `npm start` process only ever has one ephemeral secret. Could not be caught by the existing E2E suite for the same reason it could not be caught locally at all: Playwright's `webServer` is one process. Fixed two ways — `isProductionDeployment()` (`src/lib/runtime-env.ts`) checks `VERCEL_ENV` as a second, unforgettable signal so the *existing* loud-failure code path actually fires on Vercel; and independently, `/api/auth/demo-session` now refuses to provision a second time within seconds of the first attempt regardless of *why* the first one didn't verify, capping the redirect chain at one extra hop no matter what breaks next. Reproduced and verified against a locally built server with `VERCEL_ENV=production` set and `VORTEX_SESSION_SECRET` deliberately unset before either fix existed, then again after |
 | E2E | The circuit-breaker test forged a session cookie via `context.addCookies()` after a real one had already been set by an earlier navigation in the same test — Chromium held both as distinct entries (Playwright's derived `domain` from a bare origin did not exactly match the one the server set) and sent both back, with the real cookie winning; the test passed without exercising the code path it claimed to. Fixed by `context.clearCookies({ name })` before adding the forged replacement, in both the "should trip" and "should not trip" tests — the second one had the identical latent flaw despite already passing |
+| E2E (mobile) | The new Audit & compliance nav-link test clicked the sidebar link directly and hung to the 30s timeout on mobile Safari — below the `lg` breakpoint the static rail is `display:none` (excluded from the accessibility tree entirely, not just visually hidden) and the drawer's own copy of the nav does not mount until the hamburger button opens it. Every other spec in the suite reaches a page with `page.goto()` and never clicks a sidebar link at all, which is exactly why nothing had caught this before; fixed by opening the drawer first on `isMobile`, the way an actual visitor on a phone would have to |
 
 ---
 
@@ -847,7 +923,7 @@ Listed because a test that never fails proved nothing:
 src/
 ├── app/
 │   ├── (app)/                           # auth-gated: layout.tsx calls readSession()
-│   │   ├── dashboard/ dashboard/logs/ incidents/ integrations/ settings/team/
+│   │   ├── dashboard/ dashboard/logs/ incidents/ integrations/ audit/ settings/team/
 │   ├── api/
 │   │   ├── auth/sign-in, sign-out/       # scrypt verify, session cookie
 │   │   ├── auth/demo-session/            # no-sign-in-wall: auto-provisions the demo Owner
@@ -875,7 +951,7 @@ src/
 ├── lib/
 │   ├── alerting.ts  incidents.ts  metrics.ts  rbac.ts  status-page.ts   # pure domain logic
 │   ├── logger.ts  log-buffer.ts  log-format.ts  log-schema.ts           # logging + live tail
-│   ├── runtime-env.ts                   # isProductionDeployment() — VORTEX_ENV or VERCEL_ENV
+│   ├── runtime-env.ts                   # isProductionDeployment(), isVercelRuntime()
 │   ├── rate-limit.ts  format.ts  utils.ts  csv.ts  api-client.ts  session.ts
 │   ├── net/safe-url.ts
 │   ├── hooks/                           # use-metric-stream, use-log-stream
@@ -910,7 +986,8 @@ extends it — see `.env.example` for the full annotated list.
 
 | Variable | Effect |
 |---|---|
-| `DATABASE_URL` | Enables real persistence (SQLite `file:` path or a Postgres URL). Unset → in-memory fallback, data lost on restart. |
+| `DATABASE_URL` | Enables real persistence (SQLite `file:` path or a Postgres URL). Unset → auto-detects a local `prisma/dev.db` (from `npm run db:push`) on any platform with a real filesystem; on Vercel, or with no local file either, in-memory fallback, data lost on restart. |
+| `VORTEX_FORCE_MEMORY_STORAGE` | Skips the local-SQLite auto-detection above unconditionally. Not for normal use — exists so the E2E suite stays deterministic regardless of what a developer has pushed to disk in the same working directory (`playwright.config.ts` sets it). |
 | `VORTEX_SESSION_SECRET` | Signs session cookies. **Required on a real deployment** — detected automatically on Vercel via `VERCEL_ENV`, not only via `VORTEX_ENV`, so this is not something to remember to opt into (see the callout above [Authentication & sessions](#authentication--sessions)). In development an ephemeral per-process secret is generated with a warning; on a multi-instance platform that same fallback is what turns a missing secret into `ERR_TOO_MANY_REDIRECTS` instead of a clear error, so it is refused there. `GET /api/health` reports this check by name (`session_secret`). |
 | `VORTEX_ENCRYPTION_KEY` | AES-256-GCM key for third-party credentials at rest (64 hex chars). Falls back to deriving one from `VORTEX_SESSION_SECRET` if set. Missing both → credentialed integrations are refused (503), never stored in plaintext. |
 | `VORTEX_DEMO_PASSWORD` | Password for every seeded demo account. Deliberately gated on `VORTEX_ENV=production` **only**, not the broader Vercel detection above — this deployment's whole premise is a publicly known demo password shown right on the sign-in page, so treating a bare Vercel deployment as a reason to refuse seeding would break the one thing this app is for. Set this explicitly if you fork this into something that is not a public demo. |

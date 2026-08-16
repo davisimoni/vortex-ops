@@ -10,15 +10,18 @@ test.describe("API — health", () => {
     const body = (await response.json()) as {
       status: string;
       region: string;
-      storage: { driver: string; durable: boolean };
+      storage: { driver: string; durable: boolean; autoDetectedSqlite: boolean };
       checks: Array<{ name: string; ok: boolean; detail: string }>;
     };
 
     expect(body.status).toBe("ok");
     expect(body.region).toBeTruthy();
-    // The E2E web server forces DATABASE_URL="" — see playwright.config.ts.
+    // The E2E web server forces VORTEX_FORCE_MEMORY_STORAGE=1 — see
+    // playwright.config.ts — specifically so a real prisma/dev.db pushed
+    // locally can never make this flip to "prisma" mid test run.
     expect(body.storage.driver).toBe("memory");
     expect(body.storage.durable).toBe(false);
+    expect(body.storage.autoDetectedSqlite).toBe(false);
     expect(body.checks.map((check) => check.name)).toEqual(
       expect.arrayContaining([
         "storage",

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { matchNavItem } from "@/components/layout/nav-items";
 import { OrgSwitcher } from "@/components/layout/org-switcher";
+import { StorageBadge } from "@/components/layout/storage-badge";
 import { UserMenu } from "@/components/layout/user-menu";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Badge } from "@/components/ui/badge";
@@ -110,6 +111,10 @@ export function Topbar({ onOpenNav }: { readonly onOpenNav: () => void }) {
         <OrgSwitcher />
 
         <span className="hidden h-5 w-px bg-hairline sm:block" />
+
+        <span className="hidden sm:inline-flex">
+          <StorageBadge />
+        </span>
 
         <ClientOnly fallback={<span className="h-6 w-20 rounded-md bg-raised" aria-hidden="true" />}>
           <HealthPill />

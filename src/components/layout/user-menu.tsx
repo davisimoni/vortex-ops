@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut } from "lucide-react";
+import { ExternalLink, LogOut } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { useIsPreviewing, useSession } from "@/components/system/session-provider";
@@ -82,6 +82,16 @@ export function UserMenu() {
             <p className="truncate text-sm font-medium text-ink">{session.user.name}</p>
             <p className="truncate text-xs text-muted">{session.user.email}</p>
           </div>
+          <a
+            href={`/status/${session.organization.slug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            role="menuitem"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink transition-colors hover:bg-raised"
+          >
+            <ExternalLink aria-hidden="true" className="size-3.5 text-muted" />
+            View public status page
+          </a>
           <button
             type="button"
             role="menuitem"

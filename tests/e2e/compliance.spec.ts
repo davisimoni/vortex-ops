@@ -5,14 +5,26 @@ import { storageStatePath } from "./global-setup";
 test.use({ storageState: storageStatePath("acmeOwner") });
 
 test.describe("Compliance export", () => {
-  test("is offered on both the incidents page and the team page for a role that can export", async ({
+  test("is offered on the incidents page, the team page, and its own dedicated Audit & compliance page", async ({
     page,
+    isMobile,
   }) => {
     await page.goto("/incidents");
     await expect(page.getByRole("heading", { name: "Compliance export" })).toBeVisible();
 
     await page.goto("/settings/team");
     await expect(page.getByRole("heading", { name: "Compliance export" })).toBeVisible();
+
+    // Below `lg` the static rail is `display:none` (so absent from the a11y
+    // tree entirely) and the drawer's own copy of the nav does not mount
+    // until opened — the same way a real visitor on a phone would have to
+    // open it to find this link.
+    if (isMobile) await page.getByRole("button", { name: "Open navigation" }).click();
+    await expect(page.getByRole("link", { name: "Audit & compliance" })).toBeVisible();
+
+    await page.goto("/audit");
+    await expect(page.getByRole("heading", { name: "Compliance export" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Audit trail" })).toBeVisible();
   });
 
   test("downloads a CSV with a sanitised, dated filename", async ({ page }) => {
@@ -73,6 +85,12 @@ test.describe("Compliance export", () => {
 
     await page.goto("/incidents");
     await expect(page.getByRole("heading", { name: "Compliance export" })).toHaveCount(0);
+
+    // The nav link itself is gone too, and a direct visit explains why rather
+    // than rendering an empty page.
+    await expect(page.getByRole("link", { name: "Audit & compliance" })).toHaveCount(0);
+    await page.goto("/audit");
+    await expect(page.getByText("Your role does not include audit access")).toBeVisible();
   });
 });
 

@@ -1,4 +1,4 @@
-import { Activity, PlugZap, ShieldCheck, Siren, Terminal, type LucideIcon } from "lucide-react";
+import { Activity, FileCheck2, PlugZap, ShieldCheck, Siren, Terminal, type LucideIcon } from "lucide-react";
 
 import type { Permission } from "@/lib/rbac";
 
@@ -39,6 +39,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: Terminal,
     description: "Live process log tail",
     permission: "logs:read",
+  },
+  {
+    href: "/audit",
+    label: "Audit & compliance",
+    icon: FileCheck2,
+    description: "SOC 2 exports and the audit trail",
+    permission: "audit:read",
   },
   {
     href: "/settings/team",

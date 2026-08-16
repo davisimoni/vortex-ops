@@ -31,3 +31,25 @@ export function isProductionDeployment(): boolean {
   if (typeof process === "undefined" || !process.env) return false;
   return process.env.VORTEX_ENV === "production" || process.env.VERCEL_ENV === "production";
 }
+
+/**
+ * Whether this process is running as a Vercel serverless function — any of
+ * its environments (production, preview, or `vercel dev`), not only the
+ * public production one `isProductionDeployment()` answers for.
+ *
+ * The distinction matters for exactly one thing today: whether it is safe to
+ * fall back to a local SQLite *file* when no `DATABASE_URL` is configured
+ * (see `resolveDefaultSqliteUrl()` in `server/repository/index.ts`). Outside
+ * `/tmp`, a Vercel function's filesystem is read-only — a file that happens
+ * to be readable there (because it was committed to the repo) still cannot
+ * be written to, so a local-file fallback would let reads through and then
+ * fail every write with a confusing database error. Better to keep the
+ * existing, honest, already-tested in-memory fallback for every Vercel
+ * environment, and reserve the local-file fallback for platforms with an
+ * actually persistent filesystem — a VPS, a container with a volume, or a
+ * developer's own machine.
+ */
+export function isVercelRuntime(): boolean {
+  if (typeof process === "undefined" || !process.env) return false;
+  return process.env.VERCEL === "1";
+}

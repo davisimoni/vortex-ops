@@ -33,10 +33,12 @@ export async function GET(): Promise<Response> {
       // DATABASE_URL at all is a legitimate configuration, not a failure.
       ok: storage.degradedReason === null,
       detail: storage.durable
-        ? "Persistent storage via Prisma."
+        ? storage.autoDetectedSqlite
+          ? "Persistent storage via an auto-detected local SQLite file (prisma/dev.db). Set DATABASE_URL to use a different database explicitly."
+          : "Persistent storage via Prisma."
         : storage.degradedReason
           ? `DATABASE_URL is set but unusable — running on ephemeral in-memory storage. ${storage.degradedReason}`
-          : "No DATABASE_URL configured; running on in-memory storage. Data is lost on restart.",
+          : "No DATABASE_URL configured and no local SQLite file found; running on in-memory storage. Data is lost on restart.",
     },
     {
       name: "credential_encryption",
