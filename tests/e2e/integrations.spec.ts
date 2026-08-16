@@ -200,6 +200,39 @@ test.describe("Integration & webhook builder", () => {
     await expect(card.getByText(/Failed/)).toBeVisible();
   });
 
+  test("the quick-test helper pre-selects Discord and fills in a throwaway name", async ({ page }) => {
+    await expect(page.getByText("One-click notification test")).toBeVisible();
+
+    await page.getByRole("button", { name: "Test with Discord", exact: true }).click();
+    const form = builder(page);
+
+    await expect(form.getByLabel("Destination")).toHaveValue("discord");
+    await expect(form.getByLabel("Name")).toHaveValue("Portfolio test — Discord");
+    // The helper itself steps aside while the builder it launched is open —
+    // showing both at once would just be two ways to do the same thing at once.
+    await expect(page.getByText("One-click notification test")).toHaveCount(0);
+  });
+
+  test("the quick-test helper pre-selects Telegram with its own credential fields", async ({ page }) => {
+    await page.getByRole("button", { name: "Test with Telegram", exact: true }).click();
+    const form = builder(page);
+
+    await expect(form.getByLabel("Destination")).toHaveValue("telegram");
+    await expect(form.getByLabel("Name")).toHaveValue("Portfolio test — Telegram");
+    await expect(form.getByLabel("Bot token")).toBeVisible();
+    await expect(form.getByLabel("Chat ID")).toBeVisible();
+  });
+
+  test("cancelling out of a quick-test draft brings the helper back", async ({ page }) => {
+    await page.getByRole("button", { name: "Test with Discord", exact: true }).click();
+    const form = builder(page);
+    // Two "Cancel" buttons exist on the form (header and footer), both wired
+    // to the same handler — either dismisses the draft.
+    await form.getByRole("button", { name: "Cancel" }).first().click();
+
+    await expect(page.getByText("One-click notification test")).toBeVisible();
+  });
+
   test("edit does not clear a stored credential when the field is left blank", async ({ page }) => {
     const name = uniqueName("PD route");
     const renamedTo = `${name} (renamed)`;

@@ -19,6 +19,10 @@ visibly tanks the health score to prove the whole pipeline actually works. A
 status page**, the one route in the app that needs no session at all, shows
 whoever's watching what an outside customer would see.
 
+A **Quick Portfolio Tour** on the dashboard walks a first-time visitor —
+recruiter, reviewer, anyone — through the three features above in about ninety
+seconds, each step landing on the real thing, not a screenshot of it.
+
 ---
 
 ## Contents
@@ -27,6 +31,9 @@ whoever's watching what an outside customer would see.
 - [Chaos engineering drill](#chaos-engineering-drill)
 - [Live log viewer](#live-log-viewer)
 - [Public status page](#public-status-page)
+- [Quick Portfolio Tour](#quick-portfolio-tour)
+- [Dynamic social preview image](#dynamic-social-preview-image)
+- [One-click webhook test helper](#one-click-webhook-test-helper)
 - [Stack](#stack)
 - [Running it](#running-it)
 - [Architecture](#architecture)
@@ -268,6 +275,84 @@ way a real status page works: anyone who knows or guesses it can read it.
 - Opts back into search indexing explicitly (`robots: { index: true }`) —
   every other route in the app opts out at the root layout, since this is the
   one page actually meant for the public.
+
+---
+
+## Quick Portfolio Tour
+
+A small pill button in the dashboard's header row — **✨ Quick Portfolio Tour**
+— opens a three-step, centered dialog (`src/components/dashboard/demo-tour.tsx`,
+built on a new reusable `Modal` primitive in `src/components/ui/modal.tsx`).
+Never shown automatically: an unsolicited modal on first load is a cost every
+visitor pays, including the ones who came to read code, not click through a
+tour, so it only opens on request.
+
+Each step's call to action does the real thing, not a mockup of it:
+
+1. **RBAC simulator.** "Preview as Viewer" flips the live role-preview lens
+   (the same one `/settings/team`'s Role preview card drives) and lands on
+   that page already showing the effect — buttons locked, the Viewer card
+   active — instead of describing it in prose.
+2. **Chaos drill engine.** Since the trigger already lives on this exact page,
+   the step's CTA closes the tour and smooth-scrolls to it
+   (`#chaos-trigger`) rather than sending the visitor somewhere else to find
+   a button that was already on screen.
+3. **Live logs & the public status page.** One button opens `/dashboard/logs`
+   in the same tab; a second link opens `/status/acme-corp` in a new one, so
+   trying the public page never loses the authenticated tab underneath it.
+
+Step navigation (Back/Next/Done, plus dots) and the focus-trapped, Escape-to-close
+dialog itself are shared, generic UI — nothing about `Modal` is tour-specific,
+so the next feature that needs a centered dialog does not start from zero.
+
+---
+
+## Dynamic social preview image
+
+`src/app/og/route.tsx` generates the `og:image`/`twitter:image` PNG at
+**`/og`** on request, using `next/og`'s `ImageResponse` — dark background,
+a soft brand-coloured glow, the same wave logomark as the sign-in page, the
+title **"Vortex Ops — Real-Time Infrastructure Monitoring B2B SaaS"**, and the
+subtitle **"Live SSE Metrics • Chaos Engineering • SOC2 Compliance •
+Multi-Tenant RBAC"** rendered as a row of dotted pill chips. 1200×630,
+matching the size every major platform expects for a large preview card.
+
+- **Edge runtime, deliberately unlike the rest of the app.** Everywhere else
+  `node:crypto` (signing session cookies, encrypting credentials) forces the
+  Node runtime; this route touches no session, no database and no secret —
+  pure, stateless rendering, exactly the case edge is for.
+- **Generated, not a static asset**, so the copy in the image and the copy in
+  `<meta>` tags cannot drift from each other the way a hand-exported PNG
+  eventually does after the third copy edit.
+- Wired into `src/app/layout.tsx`'s `openGraph`/`twitter` metadata, with
+  `metadataBase` set from `NEXT_PUBLIC_APP_URL` so the emitted `<meta>` tags
+  carry an absolute URL rather than resolving against `localhost` on a real
+  deployment. The root layout's `robots: { index: false }` does not affect
+  this at all — social unfurlers (Slack, LinkedIn, X) read Open Graph tags
+  regardless of the indexing directive.
+- Preview it directly at **`/og`** in a browser, or check it end-to-end with
+  `curl -I http://localhost:3000/og` (expect `content-type: image/png`).
+
+---
+
+## One-click webhook test helper
+
+A "One-click notification test" card sits at the top of `/integrations`,
+above the destination list, for a visitor with no Discord server or Telegram
+bot sitting open (`src/components/integrations/quick-test-helper.tsx`).
+
+There is nothing here that fakes a delivery. A real webhook URL or bot token
+committed to a public repository would be a live credential anyone reading the
+source could fire messages through, and a fabricated one would just fail
+silently — teaching a visitor nothing about the feature. What the helper
+removes is everything *else*: "Test with Discord" / "Test with Telegram" opens
+the builder pre-set to that provider (`draftForProvider()` in
+`webhook-builder.tsx`), with a throwaway name already filled in
+(`Portfolio test — Discord`) and that provider's own setup hint — already the
+single source of truth in the `PROVIDERS` registry, not new copy — right
+underneath the button. Paste a URL or token, save, and the existing
+**Send test payload** button fires a real, `TEST —`-marked notification: the
+exact request a real incident would trigger.
 
 ---
 
@@ -675,9 +760,11 @@ rather than reporting a success for a message that never left the building.
 | `log-format` | Wire-format parsing with a graceful fallback for pretty/malformed lines, the level+text filter, plain-text export |
 | `status-page` | Per-service status derivation, aggregate tier, the 90-day uptime grid's day-boundary math, uptime percentage, and — the load-bearing one — that `redactIncidentForStatusPage` actually drops `assignment`/`notification` timeline entries and never carries an `actor` field |
 
-**218 E2E checks** (chromium + mobile Safari) across eleven spec files: auth,
-dashboard, incidents, integrations, multi-tenant, rbac, compliance, API surface,
-chaos, logs, the public status page, and the original theme/accessibility checks.
+**242 E2E checks** (chromium + mobile Safari) across twelve spec files: auth,
+dashboard, incidents, integrations (including the quick-test helper), multi-tenant,
+rbac, compliance, API surface (including a byte-level check that `/og` returns a
+real PNG), chaos, logs, the public status page, the guided demo tour, and the
+original theme/accessibility checks.
 
 ### Bugs the suite caught this round
 
@@ -716,12 +803,15 @@ src/
 │   │   ├── metrics/stream/
 │   │   └── logs/stream/                 # SSE tail of the ring buffer, gated by logs:read
 │   ├── status/[orgSlug]/                # public, no session — outside (app)
+│   ├── og/route.tsx                     # dynamic OG/Twitter image, next/og, edge runtime
 │   ├── sign-in/
 │   ├── globals.css                      # design tokens, both themes
-│   └── layout.tsx                       # document shell + pre-paint theme bootstrap
+│   └── layout.tsx                       # document shell + pre-paint theme bootstrap + OG metadata
 ├── components/
 │   ├── auth/ compliance/ charts/ dashboard/ incidents/ integrations/ team/
 │   ├── layout/ logs/ status/ system/ theme/ ui/
+│   ├── dashboard/demo-tour.tsx          # Quick Portfolio Tour
+│   └── integrations/quick-test-helper.tsx  # one-click Discord/Telegram test shortcut
 ├── lib/
 │   ├── alerting.ts  incidents.ts  metrics.ts  rbac.ts  status-page.ts   # pure domain logic
 │   ├── logger.ts  log-buffer.ts  log-format.ts  log-schema.ts           # logging + live tail
@@ -769,6 +859,7 @@ extends it — see `.env.example` for the full annotated list.
 | `VORTEX_ALLOW_PRIVATE_WEBHOOK_HOSTS` | Development only. Relaxes the SSRF guard; hard-ignored when `VORTEX_ENV=production`. |
 | `LOG_LEVEL`, `LOG_PRETTY` | Logger verbosity and human-readable local output. |
 | `VORTEX_SERVICE_NAME`, `VORTEX_ENV`, `VORTEX_REGION` | Stamped onto every log line. |
+| `NEXT_PUBLIC_APP_URL` | Public base URL, used only to resolve absolute `og:image`/`twitter:image` URLs (`metadataBase` in `layout.tsx`). Unset → `localhost`, fine in development but breaks the social preview on a real deployment. |
 
 ---
 

@@ -5,6 +5,7 @@ import { useTransition } from "react";
 import { ChartCard } from "@/components/charts/chart-card";
 import { SERIES } from "@/components/charts/chart-config";
 import { ChaosButton } from "@/components/dashboard/chaos-button";
+import { DemoTour } from "@/components/dashboard/demo-tour";
 import { HealthGauge } from "@/components/dashboard/health-gauge";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { Card, CardBody } from "@/components/ui/card";
@@ -85,8 +86,11 @@ export function DashboardView() {
           {formatDuration(spec.stepMs)} resolution
         </p>
 
-        <div className="ml-auto">
-          <ChaosButton />
+        <div className="ml-auto flex items-center gap-2">
+          <DemoTour />
+          <div id="chaos-trigger">
+            <ChaosButton />
+          </div>
         </div>
       </div>
 

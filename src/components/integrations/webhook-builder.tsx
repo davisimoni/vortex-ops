@@ -42,9 +42,26 @@ function toDraft(integration: Integration): IntegrationDraft {
   };
 }
 
+/**
+ * Seeds a fresh draft for a specific provider — the one-click "test with
+ * Discord/Telegram" shortcut lands here with everything picked except the
+ * one thing nobody but the visitor has: their own webhook URL or bot token.
+ */
+function draftForProvider(provider: IntegrationProvider): IntegrationDraft {
+  const definition = PROVIDERS[provider];
+  return {
+    ...EMPTY_DRAFT,
+    provider,
+    targetUrl: definition.derivesUrl ? definition.placeholder : "",
+    name: `Portfolio test — ${definition.label}`,
+  };
+}
+
 export interface WebhookBuilderProps {
   /** Non-null when editing an existing integration. */
   readonly editing: Integration | null;
+  /** Pre-selects a provider for a brand-new draft. Ignored while editing. */
+  readonly initialProvider?: IntegrationProvider;
   readonly onDone: () => void;
 }
 
@@ -61,14 +78,15 @@ export interface WebhookBuilderProps {
  * submission means "leave the stored value alone" — see `credentialHint` on
  * the card, which is the only trace of it the browser ever holds.
  */
-export function WebhookBuilder({ editing, onDone }: WebhookBuilderProps) {
+export function WebhookBuilder({ editing, initialProvider, onDone }: WebhookBuilderProps) {
   const create = useIntegrationStore((state) => state.create);
   const update = useIntegrationStore((state) => state.update);
   const pushToast = useToastStore((state) => state.push);
 
-  const [draft, setDraft] = useState<IntegrationDraft>(() =>
-    editing ? toDraft(editing) : EMPTY_DRAFT,
-  );
+  const [draft, setDraft] = useState<IntegrationDraft>(() => {
+    if (editing) return toDraft(editing);
+    return initialProvider ? draftForProvider(initialProvider) : EMPTY_DRAFT;
+  });
   const [token, setToken] = useState("");
   const [destination, setDestination] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);

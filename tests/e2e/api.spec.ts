@@ -37,6 +37,20 @@ test.describe("API — health", () => {
   });
 });
 
+test.describe("API — dynamic OG image", () => {
+  test("renders a real PNG with no session, for social link previews", async ({ request }) => {
+    const response = await request.get("/og");
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toBe("image/png");
+
+    const body = await response.body();
+    // The PNG signature, not just a non-empty body — a byte count alone would
+    // not catch Satori silently emitting an empty or malformed image.
+    expect(body.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    expect(body.byteLength).toBeGreaterThan(1_000);
+  });
+});
+
 test.describe("API — session gate (no credentials)", () => {
   test("every tenant-scoped route refuses an anonymous caller with 401", async ({ request }) => {
     const routes = ["/api/incidents", "/api/integrations", "/api/team", "/api/audit", "/api/rbac"];

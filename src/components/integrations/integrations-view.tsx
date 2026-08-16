@@ -4,6 +4,7 @@ import { PlugZap, Plus, ShieldAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { IntegrationCard } from "@/components/integrations/integration-card";
+import { QuickTestHelper } from "@/components/integrations/quick-test-helper";
 import { WebhookBuilder } from "@/components/integrations/webhook-builder";
 import { usePermission } from "@/components/system/session-provider";
 import { Button } from "@/components/ui/button";
@@ -11,9 +12,12 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIntegrationStore } from "@/store/integration-store";
-import type { Integration } from "@/types";
+import type { Integration, IntegrationProvider } from "@/types";
 
-type Editing = { readonly mode: "closed" } | { readonly mode: "new" } | { readonly mode: "edit"; readonly integration: Integration };
+type Editing =
+  | { readonly mode: "closed" }
+  | { readonly mode: "new"; readonly initialProvider?: IntegrationProvider }
+  | { readonly mode: "edit"; readonly integration: Integration };
 
 export function IntegrationsView() {
   const ready = useIntegrationStore((state) => state.ready);
@@ -87,8 +91,19 @@ export function IntegrationsView() {
         </CardBody>
       </Card>
 
+      {editing.mode === "closed" ? (
+        <QuickTestHelper
+          mayManage={mayManage}
+          onStart={(provider) => setEditing({ mode: "new", initialProvider: provider })}
+        />
+      ) : null}
+
       {editing.mode === "new" ? (
-        <WebhookBuilder editing={null} onDone={() => setEditing({ mode: "closed" })} />
+        <WebhookBuilder
+          editing={null}
+          initialProvider={editing.initialProvider}
+          onDone={() => setEditing({ mode: "closed" })}
+        />
       ) : null}
 
       {editing.mode === "edit" ? (
