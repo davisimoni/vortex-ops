@@ -107,6 +107,85 @@ test.describe("Automatic demo session — no sign-in wall", () => {
   });
 });
 
+test.describe("Demo-session circuit breaker — cannot loop, whatever goes wrong", () => {
+  /**
+   * Reproduces the exact shape of the production bug this guards against: a
+   * session cookie that exists but does not verify (in production, this is
+   * what a signing secret that is not stable across server instances looks
+   * like — see `isProductionDeployment()` in `lib/runtime-env.ts`), landing
+   * back at the gate a moment after `/api/auth/demo-session` already tried
+   * once. Without the circuit breaker in that route, this is
+   * `ERR_TOO_MANY_REDIRECTS`; with it, exactly one extra hop to a working
+   * sign-in page.
+   */
+  test("an unverifiable session cookie plus a fresh attempt marker lands on sign-in, not another loop", async ({
+    page,
+    context,
+  }) => {
+    // A real navigation first, purely to learn this run's actual origin
+    // (host/port come from PLAYWRIGHT_BASE_URL and vary by environment) —
+    // `context.addCookies` needs an absolute URL to attach a cookie to.
+    await page.goto("/dashboard");
+    const origin = new URL(page.url()).origin;
+
+    // That navigation already set a real, valid session cookie. `addCookies`
+    // for the same name does not reliably replace it in place — Chromium can
+    // end up holding both as distinct entries if the domain attribute Playwright
+    // derives from a bare origin does not exactly match the one the server set,
+    // and then sends *both* in the Cookie header, with the real one winning.
+    // Clearing first removes any ambiguity about which one the server sees.
+    await context.clearCookies({ name: "vortex_session" });
+
+    await context.addCookies([
+      { name: "vortex_session", value: "bm90LWEtcmVhbC10b2tlbg.aW52YWxpZC1zaWduYXR1cmU", url: origin },
+      { name: "vortex_demo_attempt", value: "1", url: origin },
+    ]);
+
+    await page.goto("/dashboard");
+
+    await expect(page).toHaveURL(/\/sign-in\?reason=session_unstable$/);
+    await expect(
+      page.getByText("Couldn't keep a session cookie stable just now", { exact: false }),
+    ).toBeVisible();
+    // The demo accounts are still right there — the honest failure does not
+    // strand the visitor with no way in.
+    await expect(page.getByRole("button", { name: /Ada Okafor/ })).toBeVisible();
+  });
+
+  test("an ordinary expired session (no attempt marker) is re-provisioned normally, not treated as a loop", async ({
+    page,
+    context,
+  }) => {
+    await page.goto("/dashboard");
+    const origin = new URL(page.url()).origin;
+
+    // The first visit above already went through real provisioning, which
+    // sets its own attempt marker (20s TTL) — left in place, it would trip
+    // the circuit breaker here for the wrong reason and this test would not
+    // be testing what it claims to. Clearing it stands in for that marker
+    // having long since expired, the way it actually would days later.
+    await context.clearCookies({ name: "vortex_demo_attempt" });
+
+    // Same reasoning as the sibling test above: replace the real cookie
+    // outright rather than risk both coexisting and the real one winning,
+    // which would make this test pass without actually exercising anything.
+    await context.clearCookies({ name: "vortex_session" });
+
+    // Same broken/unverifiable session cookie, but with no attempt marker —
+    // exactly what a genuinely expired or tampered session looks like days
+    // later, as opposed to a retry within seconds of being issued. This must
+    // NOT trip the circuit breaker.
+    await context.addCookies([
+      { name: "vortex_session", value: "bm90LWEtcmVhbC10b2tlbg.aW52YWxpZC1zaWduYXR1cmU", url: origin },
+    ]);
+
+    await page.goto("/dashboard");
+
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByRole("button", { name: /Ada Okafor/ })).toBeVisible();
+  });
+});
+
 test.describe("Authentication gate", () => {
   test("refuses API access with 401, not a redirect", async ({ request }) => {
     // An API route cannot redirect a fetch call usefully; it has to answer

@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { logger } from "@/lib/logger";
+import { isProductionDeployment } from "@/lib/runtime-env";
 
 /**
  * Stateless session cookie.
@@ -48,7 +49,7 @@ function secret(): string {
   const configured = process.env.VORTEX_SESSION_SECRET?.trim();
   if (configured && configured.length >= 32) return configured;
 
-  if (process.env.VORTEX_ENV === "production") {
+  if (isProductionDeployment()) {
     throw new Error(
       "VORTEX_SESSION_SECRET must be set to at least 32 characters in production. " +
         "Generate one with: openssl rand -base64 48",
@@ -158,7 +159,7 @@ export function sessionCookie(value: string, maxAge: number = MAX_AGE_SECONDS): 
     value,
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.VORTEX_ENV === "production",
+    secure: isProductionDeployment(),
     path: "/",
     maxAge,
   };

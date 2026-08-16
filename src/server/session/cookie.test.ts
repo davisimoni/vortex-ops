@@ -10,10 +10,18 @@ import {
 } from "@/server/session/cookie";
 
 const ORIGINAL_ENV = process.env.VORTEX_ENV;
+const ORIGINAL_VERCEL_ENV = process.env.VERCEL_ENV;
+const ORIGINAL_SECRET = process.env.VORTEX_SESSION_SECRET;
 
 afterEach(() => {
   if (ORIGINAL_ENV === undefined) delete process.env.VORTEX_ENV;
   else process.env.VORTEX_ENV = ORIGINAL_ENV;
+
+  if (ORIGINAL_VERCEL_ENV === undefined) delete process.env.VERCEL_ENV;
+  else process.env.VERCEL_ENV = ORIGINAL_VERCEL_ENV;
+
+  if (ORIGINAL_SECRET === undefined) delete process.env.VORTEX_SESSION_SECRET;
+  else process.env.VORTEX_SESSION_SECRET = ORIGINAL_SECRET;
 });
 
 describe("session cookie", () => {
@@ -102,9 +110,40 @@ describe("cookie attributes", () => {
     expect(sessionCookie("x").secure).toBe(true);
   });
 
+  it("is marked secure on Vercel production even when VORTEX_ENV was never set — the actual deployment bug this covers", () => {
+    delete process.env.VORTEX_ENV;
+    process.env.VERCEL_ENV = "production";
+    expect(sessionCookie("x").secure).toBe(true);
+  });
+
   it("clears with an empty value and zero max-age", () => {
     const cleared = clearedSessionCookie();
     expect(cleared.value).toBe("");
     expect(cleared.maxAge).toBe(0);
+  });
+});
+
+describe("secret requirement on a real deployment", () => {
+  beforeEach(() => {
+    resetEphemeralSessionSecret();
+    delete process.env.VORTEX_SESSION_SECRET;
+  });
+
+  it("throws when VORTEX_ENV=production has no session secret configured", () => {
+    delete process.env.VERCEL_ENV;
+    process.env.VORTEX_ENV = "production";
+    expect(() => encodeSession("usr_ada", "org_acme")).toThrow(/VORTEX_SESSION_SECRET/);
+  });
+
+  it("also throws on Vercel production with VORTEX_ENV unset — this is the exact gap that let every serverless instance mint its own random secret and turned a missing env var into ERR_TOO_MANY_REDIRECTS instead of a clear error", () => {
+    delete process.env.VORTEX_ENV;
+    process.env.VERCEL_ENV = "production";
+    expect(() => encodeSession("usr_ada", "org_acme")).toThrow(/VORTEX_SESSION_SECRET/);
+  });
+
+  it("falls back to a per-process ephemeral secret outside of production, as before", () => {
+    delete process.env.VORTEX_ENV;
+    delete process.env.VERCEL_ENV;
+    expect(() => encodeSession("usr_ada", "org_acme")).not.toThrow();
   });
 });

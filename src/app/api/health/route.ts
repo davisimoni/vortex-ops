@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { isProductionDeployment } from "@/lib/runtime-env";
 import { isEncryptionAvailable } from "@/server/crypto/secrets";
 import { getStorageStatus } from "@/server/repository";
 
@@ -46,11 +47,24 @@ export async function GET(): Promise<Response> {
     },
     {
       name: "session_secret",
-      ok: (process.env.VORTEX_SESSION_SECRET?.length ?? 0) >= 32,
+      // Unset is a normal, expected state in local development — the process
+      // signs with an ephemeral per-process key and that is fine for one long-
+      // running process. It stops being fine the moment there is more than one
+      // process: on a serverless platform, each instance generates its own
+      // random ephemeral secret, so a cookie signed by one instance fails to
+      // verify on the next request if it lands on another — which is
+      // indistinguishable, from the browser's side, from a broken redirect
+      // loop. Only flagged as a failure when this is a real deployment.
+      ok: (process.env.VORTEX_SESSION_SECRET?.length ?? 0) >= 32 || !isProductionDeployment(),
       detail:
         (process.env.VORTEX_SESSION_SECRET?.length ?? 0) >= 32
           ? "Session signing secret configured."
-          : "VORTEX_SESSION_SECRET is unset or too short — sessions are signed with an ephemeral per-process key and do not survive a restart.",
+          : isProductionDeployment()
+            ? "VORTEX_SESSION_SECRET is unset in a production deployment. On a multi-instance " +
+              "platform this causes ERR_TOO_MANY_REDIRECTS: each instance signs with its own " +
+              "random secret, so a session set by one fails to verify on the next request if it " +
+              "lands on another. Set VORTEX_SESSION_SECRET in your hosting provider's environment variables."
+            : "VORTEX_SESSION_SECRET is unset — sessions are signed with an ephemeral per-process key and do not survive a restart. Fine for local development.",
     },
     {
       name: "webhook_signing",
@@ -82,7 +96,7 @@ export async function GET(): Promise<Response> {
     status: "ok" as const,
     service: process.env.VORTEX_SERVICE_NAME ?? "vortex-ops",
     version: process.env.NEXT_PUBLIC_APP_VERSION ?? "1.0.0",
-    env: process.env.VORTEX_ENV ?? "development",
+    env: process.env.VORTEX_ENV ?? (isProductionDeployment() ? "production" : "development"),
     region: process.env.VORTEX_REGION ?? "eu-central-1",
     uptimeSeconds: Math.round((Date.now() - BOOTED_AT) / 1000),
     storage,

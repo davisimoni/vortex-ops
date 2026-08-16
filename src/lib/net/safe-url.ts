@@ -13,6 +13,8 @@
  * the record is stored.
  */
 
+import { isProductionDeployment } from "@/lib/runtime-env";
+
 export type UrlRejectionReason =
   | "invalid"
   | "scheme"
@@ -78,8 +80,7 @@ function isPrivateIPv6(host: string): boolean {
 function allowsPrivateHosts(): boolean {
   if (typeof process === "undefined" || !process.env) return false;
   return (
-    process.env.VORTEX_ALLOW_PRIVATE_WEBHOOK_HOSTS === "1" &&
-    process.env.VORTEX_ENV !== "production"
+    process.env.VORTEX_ALLOW_PRIVATE_WEBHOOK_HOSTS === "1" && !isProductionDeployment()
   );
 }
 

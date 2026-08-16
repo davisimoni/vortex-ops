@@ -108,7 +108,7 @@ export function serialiseError(error: unknown): LogContext {
       message: error.message,
       // Stacks stay out of production output: they are noisy and can echo
       // interpolated values back into the log.
-      stack: readEnv("VORTEX_ENV") === "production" ? undefined : error.stack,
+      stack: isProductionEnv() ? undefined : error.stack,
       cause: cause === undefined ? undefined : String(cause),
     };
   }
@@ -119,6 +119,18 @@ function readEnv(key: string): string | undefined {
   // `process` is absent in some edge/browser bundles; guard rather than assume.
   if (typeof process === "undefined" || !process.env) return undefined;
   return process.env[key];
+}
+
+/**
+ * `VORTEX_ENV=production` has to be set by hand and is easy to forget on a
+ * real deployment; `VERCEL_ENV` is stamped on automatically by Vercel with no
+ * configuration step to miss (see `lib/runtime-env.ts`, which most of the
+ * codebase uses for this same check). Duplicated here in one line rather than
+ * imported — this module is foundational enough (almost every server module
+ * imports it) that keeping it dependency-free is worth the small repetition.
+ */
+function isProductionEnv(): boolean {
+  return readEnv("VORTEX_ENV") === "production" || readEnv("VERCEL_ENV") === "production";
 }
 
 function resolveLevel(): LogLevel {
@@ -196,7 +208,11 @@ export class Logger {
       level,
       msg,
       service: readEnv("VORTEX_SERVICE_NAME") ?? "vortex-ops",
-      env: readEnv("VORTEX_ENV") ?? "development",
+      // Falls back to the Vercel-detected state, not a hard-coded default —
+      // reporting "development" for a process that is demonstrably running on
+      // Vercel's production environment is exactly the misleading signal that
+      // made VORTEX_ENV being unset hard to diagnose from the logs alone.
+      env: readEnv("VORTEX_ENV") ?? (isProductionEnv() ? "production" : "development"),
       region: readEnv("VORTEX_REGION") ?? "eu-central-1",
       ...merged,
     };

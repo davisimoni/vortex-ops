@@ -13,10 +13,30 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function SignInPage() {
+/**
+ * Shown when `/api/auth/demo-session` gave up and sent the visitor here
+ * instead of looping. Keyed to the exact `reason` it redirects with — see
+ * `src/app/api/auth/demo-session/route.ts`.
+ */
+const AUTO_SESSION_FAILURE_COPY: Record<string, string> = {
+  session_unstable:
+    "Couldn't keep a session cookie stable just now — sign in with a demo account below while that's looked into.",
+  no_demo_account: "The automatic demo account isn't available right now — sign in below instead.",
+  provisioning_failed: "Something went wrong setting up a session automatically — sign in below instead.",
+  rate_limited: "Too many attempts in a short window — wait a moment, or sign in below.",
+};
+
+export default async function SignInPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   // Already signed in: skip the form rather than letting somebody re-authenticate
   // into a second session for no reason.
   if (await readSession()) redirect("/dashboard");
+
+  const { reason } = await searchParams;
+  const autoSessionFailure = typeof reason === "string" ? AUTO_SESSION_FAILURE_COPY[reason] : undefined;
 
   const hint = demoPasswordHint();
 
@@ -40,6 +60,15 @@ export default async function SignInPage() {
           <p className="mt-1 text-sm text-muted">
             Roles are per organisation. The account you use decides what you can do.
           </p>
+
+          {autoSessionFailure ? (
+            <p
+              role="status"
+              className="mt-4 rounded-lg border border-warn/40 bg-warn/10 p-3 text-xs leading-relaxed text-ink2"
+            >
+              {autoSessionFailure}
+            </p>
+          ) : null}
 
           <div className="mt-6">
             <SignInForm accounts={DEMO_ACCOUNTS} passwordHint={hint} />

@@ -581,6 +581,26 @@ away, never a requirement.
   verification, for pages and API routes both — the demo-session route handler
   reuses it rather than adding a second one.
 
+> **Deploying to Vercel (or any multi-instance platform): set `VORTEX_SESSION_SECRET`.**
+> Without it, the app does not fail to boot — it falls back to a per-process
+> *ephemeral* secret, generated fresh on every cold start. That is fine for a
+> single, long-running local process, and it is exactly wrong for a serverless
+> platform: each instance mints its own random secret, so a session cookie
+> signed by one instance fails to verify on the next request if it lands on
+> another, and with the no-sign-in-wall flow above retrying automatically,
+> that failure mode is `ERR_TOO_MANY_REDIRECTS`, not a clear error. The
+> detection this depends on (`isProductionDeployment()` in
+> `src/lib/runtime-env.ts`) checks `VERCEL_ENV` as well as this app's own
+> `VORTEX_ENV`, specifically so a real Vercel deployment does not need anyone
+> to remember to set the latter — but the secret itself still has to be set by
+> hand, because there is no way to make an *ephemeral* secret stable across
+> independent instances without configuring one. `GET /api/health` reports
+> this directly under the `session_secret` check, and — as defense in depth
+> independent of the root cause — `/api/auth/demo-session` cannot loop more
+> than once regardless: a session that fails to verify on the very next
+> request after being issued lands on `/sign-in?reason=session_unstable`
+> instead of retrying (`ATTEMPT_COOKIE` in that route).
+
 ---
 
 ## Multi-tenancy
@@ -765,7 +785,7 @@ rather than reporting a success for a message that never left the building.
 
 ## Testing
 
-**346 unit tests** across 20 files, node environment, ~15 seconds:
+**355 unit tests** across 21 files, node environment, ~15 seconds:
 
 | Area | What is asserted |
 |---|---|
@@ -780,7 +800,8 @@ rather than reporting a success for a message that never left the building.
 | `csv` | RFC 4180 quoting, formula-injection neutralisation, filename sanitisation |
 | `secrets` | AES-256-GCM round-trip, tamper detection, key-derivation fallback, mask formatting |
 | `password` | scrypt round-trip, malformed-hash handling, cost-parameter rehash detection |
-| `cookie` | Sign/verify round-trip, tamper and expiry rejection, clock-skew tolerance |
+| `cookie` | Sign/verify round-trip, tamper and expiry rejection, clock-skew tolerance, the secret-required check firing on Vercel production detected via `VERCEL_ENV` alone |
+| `runtime-env` | `isProductionDeployment()` — `VORTEX_ENV`, `VERCEL_ENV`, both, neither, and confirming it deliberately ignores `NODE_ENV` |
 | `compliance/report` | MTTR/MTTA/attainment computation, per-service and per-severity breakdowns, window scoping |
 | `repository/memory` | Tenant isolation, credential encryption round-trip through the public/private shape split, append-only audit ordering, RBAC override CRUD, slug lookup — the fallback driver held to the same contract the database is |
 | `stores` | Client-store pure logic only (sample folding, draft validation, the chaos spike's decay curve and per-metric multiplier) — mutation logic now lives server-side and is covered directly against the repository and via E2E |
@@ -790,13 +811,15 @@ rather than reporting a success for a message that never left the building.
 | `log-format` | Wire-format parsing with a graceful fallback for pretty/malformed lines, the level+text filter, plain-text export |
 | `status-page` | Per-service status derivation, aggregate tier, the 90-day uptime grid's day-boundary math, uptime percentage, and — the load-bearing one — that `redactIncidentForStatusPage` actually drops `assignment`/`notification` timeline entries and never carries an `actor` field |
 
-**250 E2E checks** (chromium + mobile Safari) across twelve spec files: auth
-(now covering the no-sign-in-wall flow — auto-provisioning, deep links, and
-"Switch account" — alongside explicit sign-in), dashboard, incidents,
-integrations (including the quick-test helper), multi-tenant, rbac,
-compliance, API surface (including a byte-level check that `/og` returns a
-real PNG), chaos, logs, the public status page, the guided demo tour, and the
-original theme/accessibility checks.
+**254 E2E checks** (chromium + mobile Safari) across twelve spec files: auth
+(covering the no-sign-in-wall flow — auto-provisioning, deep links, "Switch
+account", and a dedicated circuit-breaker suite that forges an unverifiable
+session cookie to prove `/api/auth/demo-session` cannot loop more than once —
+alongside explicit sign-in), dashboard, incidents, integrations (including the
+quick-test helper), multi-tenant, rbac, compliance, API surface (including a
+byte-level check that `/og` returns a real PNG), chaos, logs, the public
+status page, the guided demo tour, and the original theme/accessibility
+checks.
 
 ### Bugs the suite caught this round
 
@@ -813,6 +836,8 @@ Listed because a test that never fails proved nothing:
 | E2E | Chromium and mobile Safari share one server process for a whole suite run; fixed literal integration/incident names created by chromium's pass collided with mobile Safari's later pass under the same name — fixed by salting test-created names with the project and a timestamp |
 | Manual + fix | The auto-demo-session route hard-coded its redirect target to `/dashboard` — a deep link to any other page as a visitor's very first, cookie-less request got silently redirected away from where they were headed, landing on the dashboard instead. Left as-is deliberately: the requirement is "land on the dashboard," not "preserve arbitrary deep links," and the alternative (reading the request path before a session exists) meant reintroducing edge middleware for a single header read — not worth it for a case a second navigation resolves anyway |
 | E2E | A test written to mirror an existing one omitted its `await expect(page).toHaveURL(...)` wait after signing in before clicking the user menu — Playwright's auto-waiting on the *next* locator eventually found the button, but the click landed mid-navigation and the dropdown never opened, hanging until the 30s test timeout. The sibling test right above it had the wait and passed instantly; the fix was copying it forward |
+| Production report + manual repro | The real one: `ERR_TOO_MANY_REDIRECTS` on Vercel. Both `secret()`'s "refuse to boot without a session secret" check and the cookie's `secure` flag were gated on `VORTEX_ENV=production` — an app-level label that has to be set by hand and Vercel never sets automatically. Left unset, the app silently took the *development* branch instead of failing loudly: each serverless instance generated its own random ephemeral signing secret, so a session cookie signed by one instance failed to verify on the next request if it landed on another, and the no-sign-in-wall flow retried automatically on every failure — a real, reproducible infinite loop, invisible to local testing because a single long-running `npm start` process only ever has one ephemeral secret. Could not be caught by the existing E2E suite for the same reason it could not be caught locally at all: Playwright's `webServer` is one process. Fixed two ways — `isProductionDeployment()` (`src/lib/runtime-env.ts`) checks `VERCEL_ENV` as a second, unforgettable signal so the *existing* loud-failure code path actually fires on Vercel; and independently, `/api/auth/demo-session` now refuses to provision a second time within seconds of the first attempt regardless of *why* the first one didn't verify, capping the redirect chain at one extra hop no matter what breaks next. Reproduced and verified against a locally built server with `VERCEL_ENV=production` set and `VORTEX_SESSION_SECRET` deliberately unset before either fix existed, then again after |
+| E2E | The circuit-breaker test forged a session cookie via `context.addCookies()` after a real one had already been set by an earlier navigation in the same test — Chromium held both as distinct entries (Playwright's derived `domain` from a bare origin did not exactly match the one the server set) and sent both back, with the real cookie winning; the test passed without exercising the code path it claimed to. Fixed by `context.clearCookies({ name })` before adding the forged replacement, in both the "should trip" and "should not trip" tests — the second one had the identical latent flaw despite already passing |
 
 ---
 
@@ -850,6 +875,7 @@ src/
 ├── lib/
 │   ├── alerting.ts  incidents.ts  metrics.ts  rbac.ts  status-page.ts   # pure domain logic
 │   ├── logger.ts  log-buffer.ts  log-format.ts  log-schema.ts           # logging + live tail
+│   ├── runtime-env.ts                   # isProductionDeployment() — VORTEX_ENV or VERCEL_ENV
 │   ├── rate-limit.ts  format.ts  utils.ts  csv.ts  api-client.ts  session.ts
 │   ├── net/safe-url.ts
 │   ├── hooks/                           # use-metric-stream, use-log-stream
@@ -885,15 +911,15 @@ extends it — see `.env.example` for the full annotated list.
 | Variable | Effect |
 |---|---|
 | `DATABASE_URL` | Enables real persistence (SQLite `file:` path or a Postgres URL). Unset → in-memory fallback, data lost on restart. |
-| `VORTEX_SESSION_SECRET` | Signs session cookies. **Required in production** (the app refuses to boot without it there); in development an ephemeral per-process secret is generated with a warning. |
+| `VORTEX_SESSION_SECRET` | Signs session cookies. **Required on a real deployment** — detected automatically on Vercel via `VERCEL_ENV`, not only via `VORTEX_ENV`, so this is not something to remember to opt into (see the callout above [Authentication & sessions](#authentication--sessions)). In development an ephemeral per-process secret is generated with a warning; on a multi-instance platform that same fallback is what turns a missing secret into `ERR_TOO_MANY_REDIRECTS` instead of a clear error, so it is refused there. `GET /api/health` reports this check by name (`session_secret`). |
 | `VORTEX_ENCRYPTION_KEY` | AES-256-GCM key for third-party credentials at rest (64 hex chars). Falls back to deriving one from `VORTEX_SESSION_SECRET` if set. Missing both → credentialed integrations are refused (503), never stored in plaintext. |
-| `VORTEX_DEMO_PASSWORD` | Password for every seeded demo account. Must be set in any deployed environment — seeding refuses to run in production without it. |
+| `VORTEX_DEMO_PASSWORD` | Password for every seeded demo account. Deliberately gated on `VORTEX_ENV=production` **only**, not the broader Vercel detection above — this deployment's whole premise is a publicly known demo password shown right on the sign-in page, so treating a bare Vercel deployment as a reason to refuse seeding would break the one thing this app is for. Set this explicitly if you fork this into something that is not a public demo. |
 | `VORTEX_SKIP_SEED` | Skip fixture seeding once real customer data exists. |
 | `VORTEX_WEBHOOK_SIGNING_SECRET` | Enables `X-Vortex-Signature` on custom webhooks. Unset → sent unsigned, and `/api/health` says so. |
 | `VORTEX_MAIL_RELAY_URL` | Enables email delivery. Unset → email test/trigger sends return 503. |
-| `VORTEX_ALLOW_PRIVATE_WEBHOOK_HOSTS` | Development only. Relaxes the SSRF guard; hard-ignored when `VORTEX_ENV=production`. |
+| `VORTEX_ALLOW_PRIVATE_WEBHOOK_HOSTS` | Development only. Relaxes the SSRF guard; hard-ignored on any real deployment, detected the same Vercel-aware way as the session secret above. |
 | `LOG_LEVEL`, `LOG_PRETTY` | Logger verbosity and human-readable local output. |
-| `VORTEX_SERVICE_NAME`, `VORTEX_ENV`, `VORTEX_REGION` | Stamped onto every log line. |
+| `VORTEX_SERVICE_NAME`, `VORTEX_ENV`, `VORTEX_REGION` | Stamped onto every log line. `VORTEX_ENV` is this app's own environment label; unset on a real Vercel deployment, log lines still report `env: "production"` by falling back to `VERCEL_ENV` rather than misreporting `"development"`. |
 | `NEXT_PUBLIC_APP_URL` | Public base URL, used only to resolve absolute `og:image`/`twitter:image` URLs (`metadataBase` in `layout.tsx`). Unset → `localhost`, fine in development but breaks the social preview on a real deployment. |
 
 ---
