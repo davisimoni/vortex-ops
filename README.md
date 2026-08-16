@@ -790,9 +790,11 @@ rather than reporting a success for a message that never left the building.
 | `log-format` | Wire-format parsing with a graceful fallback for pretty/malformed lines, the level+text filter, plain-text export |
 | `status-page` | Per-service status derivation, aggregate tier, the 90-day uptime grid's day-boundary math, uptime percentage, and — the load-bearing one — that `redactIncidentForStatusPage` actually drops `assignment`/`notification` timeline entries and never carries an `actor` field |
 
-**242 E2E checks** (chromium + mobile Safari) across twelve spec files: auth,
-dashboard, incidents, integrations (including the quick-test helper), multi-tenant,
-rbac, compliance, API surface (including a byte-level check that `/og` returns a
+**250 E2E checks** (chromium + mobile Safari) across twelve spec files: auth
+(now covering the no-sign-in-wall flow — auto-provisioning, deep links, and
+"Switch account" — alongside explicit sign-in), dashboard, incidents,
+integrations (including the quick-test helper), multi-tenant, rbac,
+compliance, API surface (including a byte-level check that `/og` returns a
 real PNG), chaos, logs, the public status page, the guided demo tour, and the
 original theme/accessibility checks.
 
@@ -809,6 +811,8 @@ Listed because a test that never fails proved nothing:
 | E2E (mobile) | The webhook builder's submit button was disabled via React state (`setSaving(true)`), which is *scheduled*, not synchronous — a duplicate synthetic click in that gap (mobile Safari's touch emulation can fire one) double-submitted the form; fixed with a `useRef` guard checked before any `await` |
 | E2E | `/api/auth/sign-in`'s rate limit is keyed by client IP; every local Playwright request looks like the same "anonymous" caller with no reverse proxy in front, exhausting the budget across unrelated tests — fixed by giving each logical caller its own synthetic `x-forwarded-for` |
 | E2E | Chromium and mobile Safari share one server process for a whole suite run; fixed literal integration/incident names created by chromium's pass collided with mobile Safari's later pass under the same name — fixed by salting test-created names with the project and a timestamp |
+| Manual + fix | The auto-demo-session route hard-coded its redirect target to `/dashboard` — a deep link to any other page as a visitor's very first, cookie-less request got silently redirected away from where they were headed, landing on the dashboard instead. Left as-is deliberately: the requirement is "land on the dashboard," not "preserve arbitrary deep links," and the alternative (reading the request path before a session exists) meant reintroducing edge middleware for a single header read — not worth it for a case a second navigation resolves anyway |
+| E2E | A test written to mirror an existing one omitted its `await expect(page).toHaveURL(...)` wait after signing in before clicking the user menu — Playwright's auto-waiting on the *next* locator eventually found the button, but the click landed mid-navigation and the dropdown never opened, hanging until the 30s test timeout. The sibling test right above it had the wait and passed instantly; the fix was copying it forward |
 
 ---
 
