@@ -1,0 +1,32 @@
+node_modules/
+.next/
+out/
+build/
+dist/
+coverage/
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+.env
+.env.local
+.env*.local
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+.DS_Store
+Thumbs.db
+
+/test-results/
+/playwright-report/
+/playwright/.cache/
+/tests/e2e/.auth/
+
+# Prisma — local SQLite dev database (the Postgres schema variant IS committed;
+# it's generated from prisma/schema.prisma by `npm run db:schema:postgres`, but
+# checking in the output means a fresh clone has it without an extra step).
+/prisma/dev.db
+/prisma/dev.db-journal

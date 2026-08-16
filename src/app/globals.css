@@ -1,0 +1,274 @@
+@import "tailwindcss";
+
+/*
+ * Dark mode is class-driven (`.dark` on <html>) rather than media-driven, so the
+ * in-app toggle can override the OS preference in both directions. The
+ * pre-hydration script in layout.tsx stamps the class before first paint.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ==========================================================================
+   Design tokens
+   --------------------------------------------------------------------------
+   The categorical series slots are a validated palette: every adjacent pair
+   clears the CVD separation floor (ΔE >= 8, OKLab x100) and the normal-vision
+   floor (>= 15) against both surfaces below. The dark column is the same hues
+   re-stepped for the dark surface, not an automatic inversion.
+
+   Light-mode aqua (--series-3) sits at 2.74:1 against the light surface — under
+   3:1 by design. Every chart that uses it therefore ships visible value labels
+   and a table view, so the colour never carries meaning alone.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --plane: #f9f9f7;
+  --surface: #fcfcfb;
+  --raised: #f2f1ed;
+  --sunken: #eeede8;
+
+  /* Ink */
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-muted: #898781;
+
+  /* Chart chrome */
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --hairline: rgba(11, 11, 11, 0.1);
+  --hairline-strong: rgba(11, 11, 11, 0.18);
+
+  /* Categorical series */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+
+  /* Status — fixed across modes, never themed, never reused as a series */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+
+  /* Success text needs more contrast than the success mark */
+  --delta-up: #006300;
+  --delta-down: #b02525;
+
+  --brand: #2a78d6;
+  --brand-contrast: #ffffff;
+
+  --shadow-card: 0 1px 2px rgba(11, 11, 11, 0.04), 0 8px 24px -16px rgba(11, 11, 11, 0.18);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --plane: #0d0f13;
+  --surface: #16181d;
+  --raised: #1e2128;
+  --sunken: #101216;
+
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --ink-muted: #8b8f99;
+
+  --grid: #24272e;
+  --axis: #363a44;
+  --hairline: rgba(255, 255, 255, 0.1);
+  --hairline-strong: rgba(255, 255, 255, 0.18);
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+
+  --delta-up: #0ca30c;
+  --delta-down: #e66767;
+
+  --brand: #3987e5;
+  --brand-contrast: #0d0f13;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -20px rgba(0, 0, 0, 0.8);
+}
+
+@theme inline {
+  --color-plane: var(--plane);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+
+  --color-ink: var(--ink);
+  --color-ink2: var(--ink-2);
+  --color-muted: var(--ink-muted);
+
+  --color-grid: var(--grid);
+  --color-axis: var(--axis);
+  --color-hairline: var(--hairline);
+  --color-hairline-strong: var(--hairline-strong);
+
+  --color-s1: var(--series-1);
+  --color-s2: var(--series-2);
+  --color-s3: var(--series-3);
+  --color-s4: var(--series-4);
+
+  --color-good: var(--status-good);
+  --color-warn: var(--status-warning);
+  --color-serious: var(--status-serious);
+  --color-crit: var(--status-critical);
+
+  --color-brand: var(--brand);
+  --color-brand-contrast: var(--brand-contrast);
+
+  --font-sans:
+    system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono:
+    ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+* {
+  border-color: var(--hairline);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--plane);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* One visible focus treatment everywhere. Keyboard users must never have to
+   guess where they are, and the default ring disappears against dark surfaces. */
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background-color: color-mix(in oklab, var(--brand) 28%, transparent);
+}
+
+/* Skip link — visible only when focused. */
+.skip-link {
+  position: absolute;
+  left: 0.75rem;
+  top: -3rem;
+  z-index: 100;
+  padding: 0.5rem 0.875rem;
+  border-radius: 0.5rem;
+  background-color: var(--brand);
+  color: var(--brand-contrast);
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: top 120ms ease-out;
+}
+.skip-link:focus {
+  top: 0.75rem;
+}
+
+/* ==========================================================================
+   Chart chrome
+   -------------------------------------------------------------------------- */
+
+/* Recharts renders its own focus outline on the surface rect; ours is enough. */
+.recharts-surface:focus {
+  outline: none;
+}
+
+.recharts-cartesian-grid line {
+  stroke: var(--grid);
+  stroke-width: 1;
+}
+
+/* The crosshair is a hairline in the axis colour — recessive, never a data mark. */
+.recharts-tooltip-cursor {
+  stroke: var(--axis);
+  stroke-width: 1;
+}
+
+/* Reduced motion: the live dashboard animates constantly, which is exactly the
+   case the preference exists for. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==========================================================================
+   Utilities
+   ========================================================================== */
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A live-data pulse that reads as "connected" without being a distraction. */
+@keyframes vortex-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
+
+.animate-pulse-dot {
+  animation: vortex-pulse 2s ease-in-out infinite;
+}
+
+@keyframes vortex-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in {
+  animation: vortex-slide-in 180ms ease-out;
+}
+
+/* Scrollbars that do not repaint the page white in dark mode. */
+@supports selector(::-webkit-scrollbar) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--hairline-strong);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+}

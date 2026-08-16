@@ -1,0 +1,193 @@
+// ---------------------------------------------------------------------------
+// GENERATED FILE — do not edit.
+// Produced from prisma/schema.prisma by scripts/make-postgres-schema.mjs.
+// Edit the models there and re-run `npm run db:schema:postgres`.
+// ---------------------------------------------------------------------------
+// Vortex Ops — persistence schema.
+//
+// SQLite is the committed default so the persistent path works with no
+// infrastructure: `npm run db:push` and it exists. `prisma/schema.postgresql.prisma`
+// carries the identical models against a Postgres/Supabase datasource — see
+// `npm run db:push:postgres`.
+//
+// The models are deliberately written to be portable between the two:
+//
+//  * **No native enums.** SQLite has none, and a Prisma enum would fork the two
+//    schemas. Union-typed strings are validated by Zod at every boundary
+//    instead, which is where the check has to live anyway — the database is not
+//    the only thing that writes these rows.
+//  * **No `Json` columns.** Stored as `String` holding JSON, encoded and decoded
+//    in one place (`src/server/repository/serialise.ts`).
+//  * **Explicit `@@index`** on every column a query filters by, because SQLite
+//    will happily table-scan a fixture-sized dataset and hide the omission until
+//    it is running on real volume.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// A tenant. Every row that carries customer data hangs off one of these.
+model Organization {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  /// "production" | "staging" | "development"
+  environment String   @default("production")
+  /// Seeds the metric simulator, so each tenant's charts are its own.
+  metricSeed  Int      @default(1337)
+  createdAt   DateTime @default(now())
+
+  memberships     Membership[]
+  incidents       Incident[]
+  integrations    Integration[]
+  auditEvents     AuditEvent[]
+  rolePermissions RolePermission[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  /// scrypt, `N$r$p$salt$hash`. Never a bare digest.
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  memberships Membership[]
+}
+
+/// Which role a user holds *in a given organisation*. Roles are per-tenant:
+/// an Owner at Acme is not an Owner at Stark.
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  orgId     String
+  /// "owner" | "devops" | "viewer"
+  role      String
+  /// "active" | "invited" | "suspended"
+  status    String   @default("active")
+  rotation  String?
+  lastSeenAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+  @@index([orgId])
+}
+
+/// Per-organisation overrides on top of the built-in role matrix.
+/// Absent row = fall back to the default for that role.
+model RolePermission {
+  id         String @id @default(cuid())
+  orgId      String
+  role       String
+  permission String
+  granted    Boolean
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, role, permission])
+  @@index([orgId, role])
+}
+
+model Incident {
+  id               String    @id @default(cuid())
+  orgId            String
+  /// Human-facing identifier, unique per tenant: INC-2411.
+  key              String
+  title            String
+  summary          String
+  serviceId        String
+  /// "critical" | "major" | "warning"
+  severity         String
+  /// "investigating" | "identified" | "monitoring" | "resolved"
+  status           String
+  assigneeId       String?
+  startedAt        DateTime
+  resolvedAt       DateTime?
+  /// Set when an alert rule opened it, null when a human declared it.
+  ruleId           String?
+  impactedRequests Int       @default(0)
+  updatedAt        DateTime  @updatedAt
+
+  org    Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  events IncidentEvent[]
+
+  @@unique([orgId, key])
+  @@index([orgId, status])
+  @@index([orgId, severity])
+  @@index([orgId, serviceId])
+  @@index([orgId, startedAt])
+}
+
+model IncidentEvent {
+  id         String   @id @default(cuid())
+  incidentId String
+  at         DateTime
+  /// "opened" | "status" | "assignment" | "note" | "notification"
+  kind       String
+  message    String
+  /// Display name, or null for the alerting engine.
+  actor      String?
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId, at])
+}
+
+model Integration {
+  id          String   @id @default(cuid())
+  orgId       String
+  /// "slack" | "pagerduty" | "discord" | "telegram" | "email" | "webhook"
+  provider    String
+  name        String
+  targetUrl   String
+  enabled     Boolean  @default(true)
+  /// JSON array of WebhookEvent.
+  events      String
+  minSeverity String   @default("major")
+  /// AES-256-GCM ciphertext of the credential bundle. Never plaintext, never
+  /// returned to the browser — only a masked hint is.
+  credentialCipher String?
+  credentialHint   String?
+  /// JSON DeliveryResult of the most recent attempt.
+  lastDelivery String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([orgId, enabled])
+}
+
+/// Append-only. Nothing in the application updates or deletes an audit row —
+/// a tamperable audit log is worse than none, because it is trusted.
+model AuditEvent {
+  id         String   @id @default(cuid())
+  orgId      String
+  at         DateTime @default(now())
+  actorId    String?
+  actorName  String
+  /// Dotted verb: "incident.transition", "integration.trigger", "auth.sign_in".
+  action     String
+  targetType String
+  targetId   String?
+  /// "success" | "denied" | "failure"
+  outcome    String   @default("success")
+  /// JSON object. Redacted before it is written — never carries a credential.
+  metadata   String   @default("{}")
+  ip         String?
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, at])
+  @@index([orgId, action])
+}

@@ -1,0 +1,54 @@
+{
+  "name": "vortex-ops",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vortex Ops — Enterprise real-time infrastructure monitoring & incident management",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build",
+    "postinstall": "prisma generate",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:push:postgres": "prisma db push --schema prisma/schema.postgresql.prisma",
+    "db:studio": "prisma studio",
+    "db:schema:postgres": "node scripts/make-postgres-schema.mjs"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.31.0",
+    "next": "^15.5.23",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "recharts": "^3.10.1",
+    "tailwind-merge": "^3.6.0",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.1",
+    "prisma": "^6.19.3",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  }
+}
