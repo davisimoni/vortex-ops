@@ -81,7 +81,11 @@ test.describe("Incident management", () => {
     const title = await declareTestIncident(page);
 
     const drawer = page.getByRole("dialog");
-    await expect(drawer.getByText(title)).toBeVisible();
+    // The heading specifically, not a bare getByText(title): the AI Root
+    // Cause Summary's explanation naturally references the incident by its
+    // own title too, so an unscoped locator now matches both and trips
+    // strict mode.
+    await expect(drawer.getByRole("heading", { name: title })).toBeVisible();
     await expect(
       drawer.getByRole("list", { name: "Incident lifecycle" }).getByRole("button", { name: "Investigating" }),
     ).toHaveAttribute("aria-current", "step");

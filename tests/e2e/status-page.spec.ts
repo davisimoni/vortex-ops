@@ -20,8 +20,23 @@ test.describe("Public status page", () => {
   });
 
   test("shows an honest empty state for maintenance — no fabricated data", async ({ page }) => {
-    await page.goto("/status/acme-corp");
+    // Stark, not Acme: Acme is seeded with a real upcoming maintenance window
+    // (see the next test) specifically so this page has something real to
+    // show — Stark has none, which is what makes it the right fixture for
+    // proving the empty state is not just always-on decoration.
+    await page.goto("/status/stark-industries");
     await expect(page.getByText("No scheduled maintenance.")).toBeVisible();
+  });
+
+  test("shows a real scheduled maintenance window, not a fabricated one", async ({ page }) => {
+    await page.goto("/status/acme-corp");
+    // The seed has one upcoming window and one completed three days ago —
+    // both within the 7-day completed-retention window, so both are real,
+    // present data, not a fabricated calendar.
+    await expect(page.getByText("Postgres primary — replica failover rehearsal")).toBeVisible();
+    await expect(page.getByText("Scheduled").first()).toBeVisible();
+    await expect(page.getByText("API Gateway — TLS certificate rotation")).toBeVisible();
+    await expect(page.getByText("Completed").first()).toBeVisible();
   });
 
   test("redacts internal detail from the incident timeline", async ({ page }) => {

@@ -1,5 +1,7 @@
 "use client";
 
+import { Network } from "lucide-react";
+import Link from "next/link";
 import { useTransition } from "react";
 
 import { ChartCard } from "@/components/charts/chart-card";
@@ -116,8 +118,15 @@ export function DashboardView() {
             </div>
             <div className="col-span-3">
               <dt className="text-xs text-muted">Services monitored</dt>
-              <dd className="mt-1 text-sm text-ink2">
+              <dd className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink2">
                 {SERVICES.length} across {new Set(SERVICES.map((s) => s.tier)).size} tiers
+                <Link
+                  href="/dashboard/topology"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+                >
+                  <Network aria-hidden="true" className="size-3" />
+                  View topology
+                </Link>
               </dd>
             </div>
           </dl>

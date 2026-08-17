@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { StatusPageView } from "@/components/status/status-page-view";
+import { maintenanceWindowsForStatusPage } from "@/lib/maintenance";
 import { SERVICES } from "@/lib/services";
 import {
   aggregateStatus,
@@ -65,7 +66,10 @@ export default async function StatusPage({
   if (!organization) notFound();
 
   const repository = await getRepository();
-  const incidents = await repository.listIncidents(organization.id);
+  const [incidents, maintenanceWindows] = await Promise.all([
+    repository.listIncidents(organization.id),
+    repository.listMaintenanceWindows(organization.id),
+  ]);
 
   const serviceStatuses = currentServiceStatus(SERVICES, incidents);
   const uptimeHistory = buildUptimeHistory(incidents);
@@ -78,6 +82,7 @@ export default async function StatusPage({
       uptimeHistory={uptimeHistory}
       uptimePercentValue={uptimePercent(uptimeHistory)}
       incidents={recentIncidentsForStatusPage(incidents)}
+      maintenanceWindows={maintenanceWindowsForStatusPage(maintenanceWindows)}
     />
   );
 }

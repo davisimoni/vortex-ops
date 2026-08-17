@@ -1,4 +1,13 @@
-import { Activity, FileCheck2, PlugZap, ShieldCheck, Siren, Terminal, type LucideIcon } from "lucide-react";
+import {
+  Activity,
+  FileCheck2,
+  Network,
+  PlugZap,
+  ShieldCheck,
+  Siren,
+  Terminal,
+  type LucideIcon,
+} from "lucide-react";
 
 import type { Permission } from "@/lib/rbac";
 
@@ -17,6 +26,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Dashboard",
     icon: Activity,
     description: "Live system metrics",
+    permission: "metrics:read",
+  },
+  {
+    href: "/dashboard/topology",
+    label: "Topology",
+    icon: Network,
+    description: "Service dependency map",
     permission: "metrics:read",
   },
   {

@@ -10,6 +10,7 @@ import type {
   IncidentPatch,
   IntegrationDraftInput,
   IntegrationWithCredential,
+  MaintenanceWindowDraft,
   MemberInvite,
   MembershipRecord,
   OrgEnvironment,
@@ -26,6 +27,7 @@ import type {
   IncidentStatus,
   Integration,
   IntegrationProvider,
+  MaintenanceWindow,
   MemberStatus,
   Role,
   TeamMember,
@@ -134,6 +136,15 @@ function parseDelivery(raw: string | null): DeliveryResult | null {
   }
 }
 
+function parseServiceIds(raw: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 function parseMetadata(raw: string): Record<string, unknown> {
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -198,6 +209,17 @@ interface IntegrationRow {
   createdAt: Date;
 }
 
+interface MaintenanceWindowRow {
+  id: string;
+  title: string;
+  description: string;
+  serviceIds: string;
+  startsAt: Date;
+  endsAt: Date;
+  cancelledAt: Date | null;
+  createdAt: Date;
+}
+
 interface MembershipRow {
   userId: string;
   orgId: string;
@@ -256,6 +278,19 @@ function toIntegration(row: IntegrationRow): Integration {
   };
 }
 
+function toMaintenanceWindow(row: MaintenanceWindowRow): MaintenanceWindow {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    serviceIds: parseServiceIds(row.serviceIds),
+    startsAt: row.startsAt.getTime(),
+    endsAt: row.endsAt.getTime(),
+    cancelledAt: row.cancelledAt?.getTime() ?? null,
+    createdAt: row.createdAt.getTime(),
+  };
+}
+
 function toTeamMember(row: MembershipRow): TeamMember {
   return {
     id: row.userId,
@@ -297,6 +332,9 @@ export class PrismaRepository implements VortexRepository {
   }
   private get rolePermission(): Delegate {
     return this.client.rolePermission;
+  }
+  private get maintenanceWindow(): Delegate {
+    return this.client.maintenanceWindow;
   }
 
   async ensureSeeded(): Promise<void> {
@@ -385,6 +423,21 @@ export class PrismaRepository implements VortexRepository {
             enabled: integration.enabled,
             events: JSON.stringify(integration.events),
             minSeverity: integration.minSeverity,
+          },
+        });
+      }
+
+      for (const window of seed.maintenanceWindows) {
+        await tx.maintenanceWindow.create({
+          data: {
+            id: window.id,
+            orgId: window.orgId,
+            title: window.title,
+            description: window.description,
+            serviceIds: JSON.stringify(window.serviceIds),
+            startsAt: new Date(window.startsAt),
+            endsAt: new Date(window.endsAt),
+            cancelledAt: window.cancelledAt === null ? null : new Date(window.cancelledAt),
           },
         });
       }
@@ -844,5 +897,47 @@ export class PrismaRepository implements VortexRepository {
         ip: row.ip,
       }),
     );
+  }
+
+  /* Maintenance windows ---------------------------------------------------- */
+
+  async listMaintenanceWindows(orgId: string): Promise<MaintenanceWindow[]> {
+    const rows: MaintenanceWindowRow[] = await this.maintenanceWindow.findMany({
+      where: { orgId },
+      orderBy: { startsAt: "asc" },
+    });
+    return rows.map(toMaintenanceWindow);
+  }
+
+  async createMaintenanceWindow(
+    orgId: string,
+    draft: MaintenanceWindowDraft,
+  ): Promise<MaintenanceWindow> {
+    const row: MaintenanceWindowRow = await this.maintenanceWindow.create({
+      data: {
+        orgId,
+        title: draft.title,
+        description: draft.description,
+        serviceIds: JSON.stringify(draft.serviceIds),
+        startsAt: new Date(draft.startsAt),
+        endsAt: new Date(draft.endsAt),
+      },
+    });
+    return toMaintenanceWindow(row);
+  }
+
+  async cancelMaintenanceWindow(orgId: string, windowId: string): Promise<MaintenanceWindow | null> {
+    const existing: MaintenanceWindowRow | null = await this.maintenanceWindow.findFirst({
+      where: { id: windowId, orgId },
+    });
+    if (!existing) return null;
+
+    if (existing.cancelledAt) return toMaintenanceWindow(existing);
+
+    const row: MaintenanceWindowRow = await this.maintenanceWindow.update({
+      where: { id: existing.id },
+      data: { cancelledAt: new Date() },
+    });
+    return toMaintenanceWindow(row);
   }
 }

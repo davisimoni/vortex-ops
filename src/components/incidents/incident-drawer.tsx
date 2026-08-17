@@ -3,6 +3,7 @@
 import { Bot, MessageSquarePlus, ShieldAlert } from "lucide-react";
 import { useState } from "react";
 
+import { RootCauseCard } from "@/components/incidents/root-cause-card";
 import { StatusStepper } from "@/components/incidents/status-stepper";
 import { usePermission } from "@/components/system/session-provider";
 import { SeverityBadge } from "@/components/ui/badge";
@@ -127,6 +128,8 @@ export function IncidentDrawer({ incident, onClose, now }: IncidentDrawerProps) 
     >
       <div className="flex flex-col gap-5">
         <p className="text-sm leading-relaxed text-ink2">{incident.summary}</p>
+
+        <RootCauseCard incident={incident} now={now} />
 
         <section>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Status</h3>

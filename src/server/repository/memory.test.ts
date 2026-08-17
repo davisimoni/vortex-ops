@@ -549,3 +549,68 @@ describe("audit trail", () => {
     expect(limited.every((event) => event.action === "integration.test")).toBe(true);
   });
 });
+
+describe("maintenance windows", () => {
+  it("is seeded with at least one window for Acme", async () => {
+    const windows = await repo.listMaintenanceWindows("org_acme");
+    expect(windows.length).toBeGreaterThan(0);
+  });
+
+  it("creates a window and returns it sorted by start time among the rest", async () => {
+    const before = await repo.listMaintenanceWindows("org_acme");
+
+    const created = await repo.createMaintenanceWindow("org_acme", {
+      title: "Search index — shard rebalance",
+      description: "Routine rebalance, no downtime expected.",
+      serviceIds: ["search-index"],
+      startsAt: Date.now() + 60_000,
+      endsAt: Date.now() + 120_000,
+    });
+
+    const after = await repo.listMaintenanceWindows("org_acme");
+    expect(after).toHaveLength(before.length + 1);
+    expect(after.find((window) => window.id === created.id)).toMatchObject({
+      title: "Search index — shard rebalance",
+      serviceIds: ["search-index"],
+      cancelledAt: null,
+    });
+
+    // Sorted ascending by startsAt, not insertion order.
+    const starts = after.map((window) => window.startsAt);
+    expect(starts).toEqual([...starts].sort((a, b) => a - b));
+  });
+
+  it("isolates maintenance windows by tenant", async () => {
+    const created = await repo.createMaintenanceWindow("org_acme", {
+      title: "Acme-only window",
+      description: "",
+      serviceIds: ["api-gateway"],
+      startsAt: Date.now() + 60_000,
+      endsAt: Date.now() + 120_000,
+    });
+
+    const starkWindows = await repo.listMaintenanceWindows("org_stark");
+    expect(starkWindows.some((window) => window.id === created.id)).toBe(false);
+    expect(await repo.cancelMaintenanceWindow("org_stark", created.id)).toBeNull();
+  });
+
+  it("cancels a window, and cancelling again is a no-op rather than an error", async () => {
+    const created = await repo.createMaintenanceWindow("org_acme", {
+      title: "Cancel me",
+      description: "",
+      serviceIds: ["payments"],
+      startsAt: Date.now() + 60_000,
+      endsAt: Date.now() + 120_000,
+    });
+
+    const cancelled = await repo.cancelMaintenanceWindow("org_acme", created.id);
+    expect(cancelled?.cancelledAt).not.toBeNull();
+
+    const cancelledAgain = await repo.cancelMaintenanceWindow("org_acme", created.id);
+    expect(cancelledAgain?.cancelledAt).toBe(cancelled?.cancelledAt);
+  });
+
+  it("returns null cancelling a window that does not exist", async () => {
+    expect(await repo.cancelMaintenanceWindow("org_acme", "mw_does_not_exist")).toBeNull();
+  });
+});

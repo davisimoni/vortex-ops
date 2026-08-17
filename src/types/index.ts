@@ -216,3 +216,26 @@ export interface DeliveryResult {
   /** Short, human-readable outcome. Never carries the response body verbatim. */
   readonly detail: string;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Maintenance windows                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `scheduled`/`in_progress`/`completed` are always derived from `startsAt`/
+ * `endsAt` against the clock — see `deriveMaintenanceStatus()` in
+ * `lib/maintenance.ts` — never stored. `cancelled` is the one state that is a
+ * real event rather than a function of time.
+ */
+export type MaintenanceStatus = "scheduled" | "in_progress" | "completed" | "cancelled";
+
+export interface MaintenanceWindow {
+  readonly id: string;
+  readonly title: string;
+  readonly description: string;
+  readonly serviceIds: readonly string[];
+  readonly startsAt: number;
+  readonly endsAt: number;
+  readonly cancelledAt: number | null;
+  readonly createdAt: number;
+}

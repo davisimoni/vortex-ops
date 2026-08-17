@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 
+import { CommandPalette } from "@/components/command/command-palette";
 import { PreviewBanner } from "@/components/layout/preview-banner";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
@@ -26,6 +27,7 @@ export function AppShell({ children }: { readonly children: ReactNode }) {
 
       <LiveEngine />
       <Toaster />
+      <CommandPalette />
     </div>
   );
 }

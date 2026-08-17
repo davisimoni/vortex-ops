@@ -23,15 +23,30 @@ visibly tanks the health score to prove the whole pipeline actually works. A
 status page**, the one route in the app that needs no session at all, shows
 whoever's watching what an outside customer would see.
 
+A **global command palette** (`⌘K`/`Ctrl+K`) reaches every page, every open
+incident and a live organisation switch without touching the mouse. A
+**service topology map** colours the real dependency graph — Gateway → Auth/
+Payments/Search → Database — by which services actually have an open incident
+right now, not a diagram wired to nothing. Every incident's drawer carries an
+**AI Root Cause Summary**: a diagnosis and two copy-ready remediation commands,
+pattern-matched from the incident's own service and severity rather than one
+static block of text. And **maintenance windows**, scheduled from the
+incidents page, sync automatically onto the public status page the moment
+they're created.
+
 A **Quick Portfolio Tour** on the dashboard walks a first-time visitor —
-recruiter, reviewer, anyone — through the three features above in about ninety
-seconds, each step landing on the real thing, not a screenshot of it.
+recruiter, reviewer, anyone — through three of the features above in about
+ninety seconds, each step landing on the real thing, not a screenshot of it.
 
 ---
 
 ## Contents
 
 - [What it does](#what-it-does)
+- [Command palette](#command-palette)
+- [Service topology](#service-topology)
+- [AI root cause assistant](#ai-root-cause-assistant)
+- [Maintenance windows](#maintenance-windows)
 - [Chaos engineering drill](#chaos-engineering-drill)
 - [Live log viewer](#live-log-viewer)
 - [Public status page](#public-status-page)
@@ -114,7 +129,7 @@ seconds, each step landing on the real thing, not a screenshot of it.
 
 ### 4. Team & RBAC — `/settings/team`
 
-- Three roles (Owner / DevOps / Viewer) over sixteen permissions, resolved **per
+- Three roles (Owner / DevOps / Viewer) over nineteen permissions, resolved **per
   organisation** — the same person can be Owner in one tenant and Viewer in
   another (the demo account `ada.okafor@…` is exactly that).
 - The permission matrix is **generated from the same table the API enforces**,
@@ -179,8 +194,168 @@ SSE — see [Live log viewer](#live-log-viewer) below.
 ### 9. Public status page — `/status/[orgSlug]`
 
 An unauthenticated route per organisation showing live service status, a 90-day
-uptime history and incident updates — see [Public status page](#public-status-page)
-below.
+uptime history, scheduled maintenance and incident updates — see
+[Public status page](#public-status-page) below.
+
+### 10. Global command palette — `⌘K` / `Ctrl+K`, any page
+
+Search pages, jump straight into an open incident's drawer, switch organisation
+or trigger a chaos drill — without leaving the keyboard. See
+[Command palette](#command-palette) below.
+
+### 11. Service topology — `/dashboard/topology`
+
+An interactive dependency graph — Gateway → Auth/Payments/Search → Database —
+coloured live from real open incidents, not a static diagram. See
+[Service topology](#service-topology) below.
+
+### 12. AI root cause assistant — inside every incident's drawer
+
+A "✨ AI Root Cause Summary" section with a diagnosis, a confidence score and
+two copy-ready remediation commands, computed from the incident's own service
+and severity. See [AI root cause assistant](#ai-root-cause-assistant) below.
+
+### 13. Maintenance windows — `/incidents`, synced to `/status/[orgSlug]`
+
+Schedule a maintenance window against one or more services; it appears on the
+public status page the moment it's created, no separate publish step. See
+[Maintenance windows](#maintenance-windows) below.
+
+---
+
+## Command palette
+
+`⌘K` / `Ctrl+K` from any authenticated page, or the visible **Search** button
+in the header — the shortcut alone would leave anyone on a phone with no way
+in, and this app is used on one more than at a desk.
+
+- **Hand-rolled, not `cmdk`.** This app already owns the primitives a command
+  palette needs — a focus trap, Escape-to-close, a backdrop (`Modal`/`Drawer`)
+  — so the only genuinely new code is the command list and the chaos-drill
+  confirm step. Pulling in a dependency to re-solve dialog plumbing two
+  existing files already solve would be bundle size spent on nothing new.
+- **Four sections, permission-filtered live**: *Actions* (currently just
+  Trigger Chaos Drill, gated on `chaos:trigger`), *Active incidents* (every
+  unresolved incident, jumping straight into its drawer), *Pages* (the same
+  list `NAV_ITEMS` drives the sidebar with — `/audit`, `/dashboard/logs`,
+  `/integrations` and the rest, so a permission a role does not have cannot
+  appear here either), and *Switch organisation* (every org the account
+  belongs to, excluding the current one).
+  Permission filtering replicates `usePermission()`'s own logic once at the
+  top of the component rather than calling the hook inside a loop over
+  `NAV_ITEMS` — React's rules of hooks do not allow the latter.
+- **Chaos drill keeps its two-step confirm inside the palette** — selecting it
+  does not fire it, it swaps the list for an explicit "Press Enter to confirm"
+  step, the same safety property the dashboard's own button has, because a
+  stray Enter here pages whatever integrations are configured exactly the way
+  a stray click there would.
+- **Plain substring search** (`lib/command-palette.ts`), case-insensitive over
+  a label plus keywords — the same level of "search sophistication" the live
+  log viewer already uses. A handful of pages and a dozen commands do not need
+  a fuzzy-matching library.
+
+---
+
+## Service topology
+
+`/dashboard/topology` — an interactive dependency graph: Gateway → Auth /
+Payments / Search Index → Postgres Primary, Payments → Notifications.
+
+- **A fixed, hand-authored graph** (`TOPOLOGY_EDGES` in `src/lib/topology.ts`),
+  not anything inferred at runtime. This product has no service mesh or trace
+  pipeline to derive a real dependency graph from, and a topology that
+  silently reshuffled itself between renders would be a worse demo than one
+  that is honestly static.
+- **Layered left-to-right automatically** (`computeTopologyLayout`) — every
+  node's column is its longest path from a root, so a service always renders
+  strictly to the right of everything it depends on, the one property that
+  makes a dependency diagram readable at a glance instead of a bag of
+  connected circles.
+- **Node colour is entirely real.** Health is derived from this service's own
+  currently-open incidents (`deriveTopologyStatus`, reusing the exact
+  `SEVERITY_TIER`/`worstTier` logic the public status page already uses) —
+  nothing about which node is red is invented.
+- **The latency/error-rate estimate in each node is a derivation, not a second
+  fabrication.** It scales the dashboard's own live sample — already disclosed
+  as simulated telemetry throughout this README — by this service's baseline
+  relative to the fleet average, so six services read as six different,
+  plausible numbers instead of the one org-wide figure repeated six times.
+- **Plain HTML buttons, not SVG or canvas nodes.** Only the connecting lines
+  are SVG; every node is a real, focusable `<button>` with its own accessible
+  name, so it never needs a from-scratch keyboard or screen-reader story the
+  way a graphics-primitive node would.
+- Click a node for a detail panel: the live estimate, and its real open
+  incidents linking straight into `/incidents`.
+
+---
+
+## AI root cause assistant
+
+Inside every incident's drawer, a "✨ AI Root Cause Summary" — a headline
+diagnosis, a one-paragraph explanation, a confidence score, and exactly two
+copy-ready remediation commands (`src/lib/incident-analysis.ts`).
+
+**What this honestly is: a deterministic diagnostic engine, not a live model
+call.** It makes no network request and does not claim to be a specific
+external LLM. That is a design decision worth saying out loud rather than
+leaving implied — the same "AI-assisted, not AI-fabricated" line this app
+draws everywhere else (the chaos drill is real-but-simulated; the metric
+stream is disclosed as simulated telemetry). What makes it real in the sense
+that matters for a demo is that every field is actually computed from *this*
+incident:
+
+- **Per-service authored profiles** (six of them, one per monitored service,
+  plus a generic fallback) give a genuinely different headline and remediation
+  pair depending on which service the incident belongs to — Postgres gets a
+  connection-pool diagnosis and a `pg_terminate_backend` command, Auth Service
+  gets a JWKS-cache diagnosis and a cache-flush command, and so on.
+- **Confidence scales with severity and how long the incident has run**, offset
+  by a small, *stable* hash of the incident's own id — not `Math.random()`,
+  the same determinism discipline `mulberry32` gives the metric simulator, so
+  the same incident produces the exact same analysis on every render and in
+  every test run.
+- **"Copy Fix Command"** uses the Clipboard API directly; a denied permission
+  (some browsers refuse it outside a user gesture) shows a toast rather than
+  silently doing nothing.
+- Wiring in a *real* model call is a legitimate future seam — the STT
+  integration in a sibling of this codebase shows the shape: agnostic behind
+  an env var, a clear 503 without one — but it is a deliberately separate
+  piece of work from what ships here, not something to fake with a spinner
+  and static copy in the meantime.
+
+---
+
+## Maintenance windows
+
+A "Maintenance windows" card on `/incidents`, gated behind a new
+`maintenance:manage` permission (Owner/DevOps — the same tier as declaring an
+incident): title, description, one or more affected services, a start and end
+time. Created windows sync onto the public status page automatically — there
+is no separate publish step to forget.
+
+- **Status is derived, never stored**, the same way `HealthTier` is never a
+  column anywhere else in this schema: `scheduled` / `in_progress` /
+  `completed` are only ever a comparison of `startsAt`/`endsAt` against the
+  clock (`deriveMaintenanceStatus` in `src/lib/maintenance.ts`). `cancelledAt`
+  is the one column that exists, because cancelling is a real event, not a
+  function of time.
+- **Real persistence, both drivers** — a `MaintenanceWindow` model in
+  `prisma/schema.prisma` (and its generated Postgres twin), implemented
+  identically in `PrismaRepository` and `MemoryRepository`, the same
+  contract-parity discipline every other resource in this app is held to.
+- **The public projection drops what a status page should not show forever.**
+  A cancelled window is removed entirely, not shown crossed out — a
+  maintenance that never happened is not a fact about the service's history.
+  A completed window ages out after 7 days — recent enough to matter, not so
+  old it reads as stale news (`maintenanceWindowsForStatusPage`).
+- Cancelling is idempotent — cancelling an already-cancelled window returns
+  the same `cancelledAt`, not a second timestamp or an error.
+
+This replaces the honest static stub this README used to describe here: a
+"Scheduled maintenance" section on the status page that always read "No
+scheduled maintenance" because there was nowhere in the product yet to create
+one. There is now — the empty state is unchanged for an organisation with
+nothing scheduled, but it is no longer the only possible state.
 
 ---
 
@@ -276,10 +451,10 @@ way a real status page works: anyone who knows or guesses it can read it.
   tier of anything that overlapped it at all; both reuse the dashboard's own
   four-tier vocabulary (`HealthTier` / `HEALTH_TIER_LABEL`) rather than
   inventing a second one.
-- **"No scheduled maintenance," not a fabricated maintenance calendar.** This
-  product has no maintenance-window feature built — see
-  [What is deliberately not built](#what-is-deliberately-not-built) — so the
-  page says exactly that instead of implying a feature that isn't there.
+- **Real scheduled maintenance, synced automatically** — see
+  [Maintenance windows](#maintenance-windows) above. An organisation with
+  nothing scheduled still gets the honest "No scheduled maintenance" line,
+  not a calendar UI silently wired to zero rows.
 - **Cross-tenant is a 404**, the same convention as everywhere else in this
   app: a slug that doesn't resolve tells a visitor nothing about which slugs
   are real.
@@ -856,7 +1031,7 @@ rather than reporting a success for a message that never left the building.
 
 ## Testing
 
-**358 unit tests** across 21 files, node environment, ~15 seconds:
+**400 unit tests** across 25 files, node environment, ~15 seconds:
 
 | Area | What is asserted |
 |---|---|
@@ -881,20 +1056,33 @@ rather than reporting a success for a message that never left the building.
 | `log-buffer` | Ring-buffer eviction, monotonic ids, pub/sub fan-out, a broken subscriber not blocking the others |
 | `log-format` | Wire-format parsing with a graceful fallback for pretty/malformed lines, the level+text filter, plain-text export |
 | `status-page` | Per-service status derivation, aggregate tier, the 90-day uptime grid's day-boundary math, uptime percentage, and — the load-bearing one — that `redactIncidentForStatusPage` actually drops `assignment`/`notification` timeline entries and never carries an `actor` field |
+| `topology` | Layered layout (every node strictly right of its dependencies, no infinite loop on a cyclic edge set as a defensive check), health derivation scoped to the correct service and excluding resolved incidents, the live-sample estimate actually varying per service rather than repeating one number |
+| `incident-analysis` | Determinism (same incident → byte-identical analysis), a different headline/commands per service, the generic fallback for an unauthored service, confidence bounds and severity ordering, that duration and impacted-request count are read from the real incident, not templated blind |
+| `maintenance` | Status derivation at each of its four states including the cancelled-overrides-everything case, the public projection dropping cancelled windows entirely and ageing out old completed ones, service-id-to-name resolution with a safe fallback |
+| `command-palette` | Case-insensitive substring matching on label and keywords, empty-query matches-everything, filter order preservation |
 
-**256 E2E checks** (chromium + mobile Safari; 255 run, one skipped by design —
-the storage badge is `sm+`-only chrome, see below) across twelve spec files:
-auth (covering the no-sign-in-wall flow — auto-provisioning, deep links,
-"Switch account", the public-status-page shortcut in the user menu, and a
-dedicated circuit-breaker suite that forges an unverifiable session cookie to
-prove `/api/auth/demo-session` cannot loop more than once — alongside explicit
-sign-in), dashboard (including the storage indicator badge), incidents,
-integrations (including the quick-test helper), multi-tenant, rbac,
-compliance (including the dedicated `/audit` page, reachable from the sidebar
-on desktop and from the mobile nav drawer alike), API surface (including a
-byte-level check that `/og` returns a real PNG, and that `/api/health` reports
-`autoDetectedSqlite`), chaos, logs, the public status page, the guided demo
-tour, and the original theme/accessibility checks.
+**314 E2E checks** (chromium + mobile Safari; 312 run, two skipped by design —
+the storage badge is `sm+`-only chrome, and WebKit's Playwright driver cannot
+grant the `clipboard-write` permission at all, see below) across sixteen spec
+files: auth (covering the no-sign-in-wall flow — auto-provisioning, deep
+links, "Switch account", the public-status-page shortcut in the user menu,
+and a dedicated circuit-breaker suite that forges an unverifiable session
+cookie to prove `/api/auth/demo-session` cannot loop more than once —
+alongside explicit sign-in), dashboard (including the storage indicator
+badge), incidents, integrations (including the quick-test helper),
+multi-tenant, rbac, compliance (including the dedicated `/audit` page,
+reachable from the sidebar on desktop and from the mobile nav drawer alike),
+API surface (including a byte-level check that `/og` returns a real PNG, and
+that `/api/health` reports `autoDetectedSqlite`), chaos, logs, the public
+status page (including real, seeded maintenance windows alongside the honest
+empty state for a tenant with none), the guided demo tour, the original
+theme/accessibility checks, the **command palette** (search, keyboard nav,
+navigation, the chaos drill's two-step confirm, permission gating), **service
+topology** (every node present, real open-incident markers, the detail
+panel's real incident list), the **AI root cause summary** (present with a
+confidence score and two commands, genuinely different per service, the copy
+button's confirmed state), and **maintenance windows** (scheduling, cancelling
+without deleting, permission gating, syncing onto the public status page).
 
 ### Bugs the suite caught this round
 
@@ -914,6 +1102,8 @@ Listed because a test that never fails proved nothing:
 | Production report + manual repro | The real one: `ERR_TOO_MANY_REDIRECTS` on Vercel. Both `secret()`'s "refuse to boot without a session secret" check and the cookie's `secure` flag were gated on `VORTEX_ENV=production` — an app-level label that has to be set by hand and Vercel never sets automatically. Left unset, the app silently took the *development* branch instead of failing loudly: each serverless instance generated its own random ephemeral signing secret, so a session cookie signed by one instance failed to verify on the next request if it landed on another, and the no-sign-in-wall flow retried automatically on every failure — a real, reproducible infinite loop, invisible to local testing because a single long-running `npm start` process only ever has one ephemeral secret. Could not be caught by the existing E2E suite for the same reason it could not be caught locally at all: Playwright's `webServer` is one process. Fixed two ways — `isProductionDeployment()` (`src/lib/runtime-env.ts`) checks `VERCEL_ENV` as a second, unforgettable signal so the *existing* loud-failure code path actually fires on Vercel; and independently, `/api/auth/demo-session` now refuses to provision a second time within seconds of the first attempt regardless of *why* the first one didn't verify, capping the redirect chain at one extra hop no matter what breaks next. Reproduced and verified against a locally built server with `VERCEL_ENV=production` set and `VORTEX_SESSION_SECRET` deliberately unset before either fix existed, then again after |
 | E2E | The circuit-breaker test forged a session cookie via `context.addCookies()` after a real one had already been set by an earlier navigation in the same test — Chromium held both as distinct entries (Playwright's derived `domain` from a bare origin did not exactly match the one the server set) and sent both back, with the real cookie winning; the test passed without exercising the code path it claimed to. Fixed by `context.clearCookies({ name })` before adding the forged replacement, in both the "should trip" and "should not trip" tests — the second one had the identical latent flaw despite already passing |
 | E2E (mobile) | The new Audit & compliance nav-link test clicked the sidebar link directly and hung to the 30s timeout on mobile Safari — below the `lg` breakpoint the static rail is `display:none` (excluded from the accessibility tree entirely, not just visually hidden) and the drawer's own copy of the nav does not mount until the hamburger button opens it. Every other spec in the suite reaches a page with `page.goto()` and never clicks a sidebar link at all, which is exactly why nothing had caught this before; fixed by opening the drawer first on `isMobile`, the way an actual visitor on a phone would have to |
+| E2E | `WebKit`'s Playwright driver has no `clipboard-write` permission to grant at all — `context.grantPermissions(["clipboard-write"])` throws `Unknown permission` outright rather than failing softly, unlike Chromium. The "Copy Fix Command" test skips on `webkit` with a named reason rather than papering over it with a try/catch that would silently stop testing the real behaviour on the browser that actually supports it |
+| E2E (mobile) | The topology page's first render depends on both the incident store's async fetch and the metrics store's client-side init; `page.goto()` only waits for `load`, not for those to resolve. Every other topology test happened to interact with the graph slowly enough (typing, clicking, waiting on a toast) to clear the race by accident — the one test that asserted immediately after navigation was the one that caught it. Fixed by waiting for `networkidle` in `beforeEach`, the same hydration-timing fix already used in `auth.spec.ts` |
 
 ---
 
@@ -934,6 +1124,7 @@ src/
 │   │   ├── rbac/                        # permission-matrix overrides
 │   │   ├── audit/                       # read-only
 │   │   ├── compliance/export/
+│   │   ├── maintenance/, maintenance/[id]/  # schedule + cancel, synced to the status page
 │   │   ├── chaos/simulate/              # the drill: incident + notifications + spike duration
 │   │   ├── health/
 │   │   ├── metrics/stream/
@@ -946,10 +1137,18 @@ src/
 ├── components/
 │   ├── auth/ compliance/ charts/ dashboard/ incidents/ integrations/ team/
 │   ├── layout/ logs/ status/ system/ theme/ ui/
+│   ├── command/command-palette.tsx      # ⌘K / Ctrl+K, mounted once in AppShell
+│   ├── topology/                        # topology-graph.tsx (SVG+HTML), topology-view.tsx
+│   ├── incidents/root-cause-card.tsx    # "✨ AI Root Cause Summary" in the incident drawer
+│   ├── incidents/maintenance-windows-card.tsx
 │   ├── dashboard/demo-tour.tsx          # Quick Portfolio Tour
 │   └── integrations/quick-test-helper.tsx  # one-click Discord/Telegram test shortcut
 ├── lib/
 │   ├── alerting.ts  incidents.ts  metrics.ts  rbac.ts  status-page.ts   # pure domain logic
+│   ├── topology.ts                      # dependency graph, layout, live-status derivation
+│   ├── incident-analysis.ts             # the root-cause engine — see the module's own doc comment
+│   ├── maintenance.ts                   # status derivation, public status-page projection
+│   ├── command-palette.ts               # search/filter matching, kept pure and unit-tested
 │   ├── logger.ts  log-buffer.ts  log-format.ts  log-schema.ts           # logging + live tail
 │   ├── runtime-env.ts                   # isProductionDeployment(), isVercelRuntime()
 │   ├── rate-limit.ts  format.ts  utils.ts  csv.ts  api-client.ts  session.ts
@@ -966,7 +1165,8 @@ src/
 │   ├── session/                         # signed cookie, server-side session resolution
 │   ├── http.ts                          # route wrapper: no-store, typed errors
 │   └── validation.ts                    # shared Zod schemas
-├── store/           # zustand: thin API clients (incidents, team, integrations), session preview,
+├── store/           # zustand: thin API clients (incidents, team, integrations, maintenance),
+│                     #   session preview, command-palette-store (open/closed only),
 │                     #   metrics-store owns the chaos-spike decay too
 └── types/
 prisma/
@@ -1025,10 +1225,11 @@ is what still is not:
 - **Audit log retention is unbounded** in the current schema — a real compliance
   deployment would add a retention policy and archival, not keep every row in
   the primary database forever.
-- **No maintenance-window scheduling.** The public status page has a
-  "Scheduled maintenance" section because a real one would; it always reads
-  "No scheduled maintenance" because there is nowhere in the product yet to
-  create one. An honest static empty state, not a calendar UI wired to nothing.
+- **The AI root cause assistant is a deterministic diagnostic engine, not a
+  live model call.** See [AI root cause assistant](#ai-root-cause-assistant) —
+  it makes no network request and does not claim to be a specific external
+  LLM. Wiring a real one in is a legitimate future seam, deliberately not
+  built as part of this pass.
 - **The log ring buffer is in-process and unpartitioned**, the same "one
   instance, not a distributed store" trade-off as the rate limiter — behind
   several replicas each holds only its own recent lines, and the buffer is not

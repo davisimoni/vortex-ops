@@ -6,7 +6,7 @@ import type {
   Organization,
   StoredUser,
 } from "@/server/repository/types";
-import type { Incident, IncidentEvent, MemberStatus, Role } from "@/types";
+import type { Incident, IncidentEvent, MaintenanceWindow, MemberStatus, Role } from "@/types";
 
 /**
  * Demo fixtures, shared by both storage drivers.
@@ -185,6 +185,7 @@ export interface SeedBundle {
   readonly memberships: readonly SeedMembership[];
   readonly incidents: readonly (Incident & { readonly orgId: string })[];
   readonly integrations: readonly SeedIntegration[];
+  readonly maintenanceWindows: readonly (MaintenanceWindow & { readonly orgId: string })[];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -546,6 +547,41 @@ const INTEGRATIONS: readonly Omit<SeedIntegration, "credential">[] = [
 ] as const;
 
 /* -------------------------------------------------------------------------- */
+/* Maintenance windows                                                        */
+/* -------------------------------------------------------------------------- */
+
+interface SeedMaintenanceWindow {
+  readonly orgId: string;
+  readonly title: string;
+  readonly description: string;
+  readonly serviceIds: readonly string[];
+  /** Negative = already started. */
+  readonly startsInMs: number;
+  readonly endsInMs: number;
+}
+
+const MAINTENANCE_WINDOWS: readonly SeedMaintenanceWindow[] = [
+  {
+    orgId: "org_acme",
+    title: "Postgres primary — replica failover rehearsal",
+    description:
+      "Planned failover from the primary to the standby replica to validate the new automated runbook. " +
+      "Brief write unavailability expected during the switch.",
+    serviceIds: ["postgres-primary", "auth-service"],
+    startsInMs: 2 * DAY,
+    endsInMs: 2 * DAY + 90 * MINUTE,
+  },
+  {
+    orgId: "org_acme",
+    title: "API Gateway — TLS certificate rotation",
+    description: "Routine certificate rotation on the edge load balancers. No expected customer impact.",
+    serviceIds: ["api-gateway"],
+    startsInMs: -3 * DAY,
+    endsInMs: -3 * DAY + 20 * MINUTE,
+  },
+] as const;
+
+/* -------------------------------------------------------------------------- */
 /* Assembly                                                                    */
 /* -------------------------------------------------------------------------- */
 
@@ -609,5 +645,17 @@ export async function buildSeed(now: number): Promise<SeedBundle> {
     credential: null,
   }));
 
-  return { organizations: ORGANIZATIONS, users, memberships, incidents, integrations };
+  const maintenanceWindows = MAINTENANCE_WINDOWS.map((window, index) => ({
+    id: `mw_seed_${index}`,
+    orgId: window.orgId,
+    title: window.title,
+    description: window.description,
+    serviceIds: [...window.serviceIds],
+    startsAt: Math.round(now + window.startsInMs),
+    endsAt: Math.round(now + window.endsInMs),
+    cancelledAt: null,
+    createdAt: Math.round(now - 6 * HOUR),
+  }));
+
+  return { organizations: ORGANIZATIONS, users, memberships, incidents, integrations, maintenanceWindows };
 }

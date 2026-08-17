@@ -16,6 +16,7 @@ export const PERMISSIONS = [
   "incident:assign",
   "incident:transition",
   "incident:comment",
+  "maintenance:manage",
   "integration:read",
   "integration:manage",
   "integration:test",
@@ -67,6 +68,10 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "incident:assign",
     "incident:transition",
     "incident:comment",
+    // Scheduling a maintenance window is operational work, same tier as
+    // declaring an incident — the people who carry the pager are the people
+    // who get to tell customers about planned downtime.
+    "maintenance:manage",
     "integration:read",
     "integration:test",
     "team:read",
@@ -110,6 +115,7 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "incident:assign": "Assign responders",
   "incident:transition": "Change incident status",
   "incident:comment": "Post timeline notes",
+  "maintenance:manage": "Schedule maintenance windows",
   "integration:read": "View integrations",
   "integration:manage": "Create & edit integrations",
   "integration:test": "Send test payloads",
@@ -124,7 +130,7 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "logs:read": "View live process logs",
 };
 
-/** Grouping for the matrix so fourteen rows read as four sections. */
+/** Grouping for the matrix so nineteen rows read as five sections. */
 export const PERMISSION_GROUPS: ReadonlyArray<{
   readonly label: string;
   readonly permissions: readonly Permission[];
@@ -139,6 +145,7 @@ export const PERMISSION_GROUPS: ReadonlyArray<{
       "incident:transition",
       "incident:comment",
       "chaos:trigger",
+      "maintenance:manage",
     ],
   },
   {

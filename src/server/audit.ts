@@ -103,6 +103,8 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   "incident.assign": "Assigned responder",
   "incident.comment": "Posted timeline note",
   "chaos.trigger": "Ran a chaos engineering drill",
+  "maintenance.create": "Scheduled a maintenance window",
+  "maintenance.cancel": "Cancelled a maintenance window",
   "integration.create": "Created integration",
   "integration.update": "Updated integration",
   "integration.delete": "Removed integration",

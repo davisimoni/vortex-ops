@@ -4,10 +4,18 @@ import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Card, CardBody } from "@/components/ui/card";
 import { formatTimestamp } from "@/lib/format";
+import { MAINTENANCE_STATUS_LABEL, type PublicMaintenanceWindow } from "@/lib/maintenance";
 import { HEALTH_TIER_LABEL } from "@/lib/metrics";
 import { SEVERITY_TIER, type DayUptime, type PublicIncident, type ServiceStatus } from "@/lib/status-page";
 import { cn } from "@/lib/utils";
-import type { HealthTier } from "@/types";
+import type { HealthTier, MaintenanceStatus } from "@/types";
+
+const MAINTENANCE_TONE: Record<MaintenanceStatus, BadgeTone> = {
+  scheduled: "brand",
+  in_progress: "warning",
+  completed: "neutral",
+  cancelled: "neutral",
+};
 
 const TIER_TONE: Record<HealthTier, BadgeTone> = {
   operational: "good",
@@ -37,6 +45,7 @@ export interface StatusPageViewProps {
   readonly uptimeHistory: readonly DayUptime[];
   readonly uptimePercentValue: number;
   readonly incidents: readonly PublicIncident[];
+  readonly maintenanceWindows: readonly PublicMaintenanceWindow[];
 }
 
 export function StatusPageView({
@@ -46,6 +55,7 @@ export function StatusPageView({
   uptimeHistory,
   uptimePercentValue,
   incidents,
+  maintenanceWindows,
 }: StatusPageViewProps) {
   return (
     <main className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
@@ -115,12 +125,37 @@ export function StatusPageView({
         <h2 id="maintenance-heading" className="text-sm font-semibold text-ink">
           Scheduled maintenance
         </h2>
-        <Card>
-          <CardBody className="flex items-center gap-2.5 text-sm text-ink2">
-            <CalendarClock aria-hidden="true" className="size-4 shrink-0 text-muted" />
-            No scheduled maintenance.
-          </CardBody>
-        </Card>
+        {maintenanceWindows.length === 0 ? (
+          <Card>
+            <CardBody className="flex items-center gap-2.5 text-sm text-ink2">
+              <CalendarClock aria-hidden="true" className="size-4 shrink-0 text-muted" />
+              No scheduled maintenance.
+            </CardBody>
+          </Card>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {maintenanceWindows.map((window) => (
+              <Card key={window.id}>
+                <CardBody className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-medium text-ink">{window.title}</h3>
+                    <Badge tone={MAINTENANCE_TONE[window.status]}>
+                      {MAINTENANCE_STATUS_LABEL[window.status]}
+                    </Badge>
+                  </div>
+                  {window.description ? (
+                    <p className="text-xs leading-relaxed text-ink2">{window.description}</p>
+                  ) : null}
+                  <p className="tabular text-xs text-muted">
+                    {formatTimestamp(window.startsAt)} → {formatTimestamp(window.endsAt)}
+                    <span aria-hidden="true"> · </span>
+                    {window.serviceNames.join(", ")}
+                  </p>
+                </CardBody>
+              </Card>
+            ))}
+          </div>
+        )}
       </section>
 
       <section aria-labelledby="incidents-heading" className="flex flex-col gap-2">

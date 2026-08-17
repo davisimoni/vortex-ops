@@ -33,7 +33,8 @@ const TIER_RANK: Record<HealthTier, number> = {
   major: 3,
 };
 
-function worstTier(tiers: readonly HealthTier[]): HealthTier {
+/** Exported for reuse anywhere else that needs "the worst of several tiers" — e.g. `lib/topology.ts`. */
+export function worstTier(tiers: readonly HealthTier[]): HealthTier {
   return tiers.reduce<HealthTier>(
     (worst, tier) => (TIER_RANK[tier] > TIER_RANK[worst] ? tier : worst),
     "operational",

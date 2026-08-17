@@ -43,11 +43,12 @@ model Organization {
   metricSeed  Int      @default(1337)
   createdAt   DateTime @default(now())
 
-  memberships     Membership[]
-  incidents       Incident[]
-  integrations    Integration[]
-  auditEvents     AuditEvent[]
-  rolePermissions RolePermission[]
+  memberships        Membership[]
+  incidents          Incident[]
+  integrations       Integration[]
+  auditEvents        AuditEvent[]
+  rolePermissions    RolePermission[]
+  maintenanceWindows MaintenanceWindow[]
 }
 
 model User {
@@ -166,6 +167,32 @@ model Integration {
 
   @@index([orgId])
   @@index([orgId, enabled])
+}
+
+/// A scheduled maintenance window, synced onto the public status page.
+///
+/// "scheduled" / "in_progress" / "completed" are deliberately not a stored
+/// column — they are only ever a comparison of `startsAt`/`endsAt` against
+/// now, the same way `HealthTier` is never stored either. A persisted status
+/// would drift from the timestamps the moment a clock skew or a manual edit
+/// disagreed with it; `cancelledAt` is the one state that is a real event
+/// rather than a function of time, so it is the only one kept as a column.
+model MaintenanceWindow {
+  id          String    @id @default(cuid())
+  orgId       String
+  title       String
+  description String    @default("")
+  /// JSON array of ServiceDefinition ids from `src/lib/services.ts`.
+  serviceIds  String
+  startsAt    DateTime
+  endsAt      DateTime
+  cancelledAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([orgId, startsAt])
 }
 
 /// Append-only. Nothing in the application updates or deletes an audit row —

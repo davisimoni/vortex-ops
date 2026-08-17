@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu, Pause, Play, Radio } from "lucide-react";
+import { Menu, Pause, Play, Radio, Search } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 import { matchNavItem } from "@/components/layout/nav-items";
@@ -9,9 +9,10 @@ import { StorageBadge } from "@/components/layout/storage-badge";
 import { UserMenu } from "@/components/layout/user-menu";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Badge } from "@/components/ui/badge";
-import { ClientOnly } from "@/components/ui/client-only";
+import { ClientOnly, useMounted } from "@/components/ui/client-only";
 import { assessHealth, HEALTH_TIER_LABEL } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
+import { useCommandPaletteStore } from "@/store/command-palette-store";
 import { useIncidentStore } from "@/store/incident-store";
 import { useMetricsStore } from "@/store/metrics-store";
 import type { HealthTier, StreamStatus } from "@/types";
@@ -89,6 +90,37 @@ function pageTitle(pathname: string): string {
   return matchNavItem(pathname)?.label ?? "Vortex Ops";
 }
 
+/**
+ * Opens the command palette — the one visible affordance for it. `⌘K`/`Ctrl+K`
+ * only exists on a physical keyboard, and this app is used on a phone more
+ * than at a desk, so the shortcut cannot be the only way in.
+ */
+function CommandPaletteTrigger() {
+  const toggle = useCommandPaletteStore((state) => state.toggle);
+  // Gated on `useMounted()`, not a `useEffect` + `setState`: the same
+  // "hydration snapshot, not a cascading render" reasoning `useMounted` itself
+  // documents. `window` is unread (and this is `false`) during the server and
+  // first-client render, so there is nothing to mismatch.
+  const mounted = useMounted();
+  const isMac = mounted && /Mac|iPhone|iPad/.test(window.navigator.userAgent);
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-label="Open command palette"
+      title="Search pages, incidents and actions"
+      className="flex items-center gap-1.5 rounded-lg border border-hairline bg-raised px-2.5 py-1.5 text-xs font-medium text-ink2 transition-colors hover:border-hairline-strong hover:text-ink"
+    >
+      <Search aria-hidden="true" className="size-3.5" />
+      <span className="hidden md:inline">Search</span>
+      <kbd className="hidden rounded border border-hairline bg-plane px-1.5 py-0.5 font-mono text-[10px] text-muted md:block">
+        {isMac ? "⌘K" : "Ctrl K"}
+      </kbd>
+    </button>
+  );
+}
+
 export function Topbar({ onOpenNav }: { readonly onOpenNav: () => void }) {
   const pathname = usePathname();
 
@@ -108,6 +140,10 @@ export function Topbar({ onOpenNav }: { readonly onOpenNav: () => void }) {
       </h1>
 
       <div className="ml-auto flex items-center gap-2 sm:gap-2.5">
+        <CommandPaletteTrigger />
+
+        <span className="hidden h-5 w-px bg-hairline sm:block" />
+
         <OrgSwitcher />
 
         <span className="hidden h-5 w-px bg-hairline sm:block" />

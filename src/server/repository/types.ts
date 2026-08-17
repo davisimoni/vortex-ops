@@ -7,6 +7,7 @@ import type {
   IncidentStatus,
   Integration,
   IntegrationProvider,
+  MaintenanceWindow,
   MemberStatus,
   Role,
   TeamMember,
@@ -146,6 +147,14 @@ export interface MemberInvite {
   readonly role: Role;
 }
 
+export interface MaintenanceWindowDraft {
+  readonly title: string;
+  readonly description: string;
+  readonly serviceIds: readonly string[];
+  readonly startsAt: number;
+  readonly endsAt: number;
+}
+
 /* -------------------------------------------------------------------------- */
 /* The repository                                                              */
 /* -------------------------------------------------------------------------- */
@@ -239,4 +248,10 @@ export interface VortexRepository {
   /* Audit ---------------------------------------------------------------- */
   appendAudit(entry: AuditEntry): Promise<AuditEvent>;
   listAudit(orgId: string, query?: AuditQuery): Promise<AuditEvent[]>;
+
+  /* Maintenance windows ---------------------------------------------------- */
+  listMaintenanceWindows(orgId: string): Promise<MaintenanceWindow[]>;
+  createMaintenanceWindow(orgId: string, draft: MaintenanceWindowDraft): Promise<MaintenanceWindow>;
+  /** `null` if the window does not exist in this organisation. Idempotent — cancelling twice is not an error. */
+  cancelMaintenanceWindow(orgId: string, windowId: string): Promise<MaintenanceWindow | null>;
 }

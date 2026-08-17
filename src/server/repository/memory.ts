@@ -11,6 +11,7 @@ import type {
   IncidentPatch,
   IntegrationDraftInput,
   IntegrationWithCredential,
+  MaintenanceWindowDraft,
   MemberInvite,
   MembershipRecord,
   Organization,
@@ -24,6 +25,7 @@ import type {
   Incident,
   IncidentEvent,
   Integration,
+  MaintenanceWindow,
   Role,
   TeamMember,
 } from "@/types";
@@ -78,6 +80,10 @@ interface StoredMembership extends MembershipRecord {
   readonly email: string;
 }
 
+interface StoredMaintenanceWindow extends MaintenanceWindow {
+  readonly orgId: string;
+}
+
 interface MemoryState {
   organizations: Map<string, Organization>;
   users: Map<string, StoredUser>;
@@ -85,6 +91,7 @@ interface MemoryState {
   overrides: Map<string, RoleOverride[]>;
   incidents: Map<string, StoredIncident>;
   integrations: Map<string, StoredIntegration>;
+  maintenanceWindows: Map<string, StoredMaintenanceWindow>;
   audit: AuditEvent[];
   seeded: boolean;
 }
@@ -109,6 +116,7 @@ function emptyState(): MemoryState {
     overrides: new Map(),
     incidents: new Map(),
     integrations: new Map(),
+    maintenanceWindows: new Map(),
     audit: [],
     seeded: false,
   };
@@ -144,6 +152,11 @@ function toPublicIntegration(stored: StoredIntegration): Integration {
   // a field the returned object never carries cannot be leaked by forgetting.
   const { credentialCipher: _cipher, orgId: _orgId, ...pub } = stored;
   return { ...pub, events: [...pub.events] };
+}
+
+function cloneMaintenanceWindow(window: StoredMaintenanceWindow): MaintenanceWindow {
+  const { orgId: _orgId, ...pub } = window;
+  return { ...pub, serviceIds: [...pub.serviceIds] };
 }
 
 export class MemoryRepository implements VortexRepository {
@@ -190,6 +203,10 @@ export class MemoryRepository implements VortexRepository {
           credentialHint: null,
           credentialCipher: null,
         });
+      }
+
+      for (const window of seed.maintenanceWindows) {
+        store.maintenanceWindows.set(window.id, window);
       }
     } catch (error) {
       // Leaving `seeded` true on failure would strand an empty store forever.
@@ -577,5 +594,44 @@ export class MemoryRepository implements VortexRepository {
       .sort((a, b) => b.event.at - a.event.at || b.index - a.index)
       .slice(0, limit)
       .map(({ event }) => event);
+  }
+
+  /* Maintenance windows ---------------------------------------------------- */
+
+  async listMaintenanceWindows(orgId: string): Promise<MaintenanceWindow[]> {
+    return [...state().maintenanceWindows.values()]
+      .filter((window) => window.orgId === orgId)
+      .map(cloneMaintenanceWindow)
+      .sort((a, b) => a.startsAt - b.startsAt);
+  }
+
+  async createMaintenanceWindow(
+    orgId: string,
+    draft: MaintenanceWindowDraft,
+  ): Promise<MaintenanceWindow> {
+    const window: StoredMaintenanceWindow = {
+      id: `mw_${randomUUID().slice(0, 12)}`,
+      orgId,
+      title: draft.title,
+      description: draft.description,
+      serviceIds: [...draft.serviceIds],
+      startsAt: draft.startsAt,
+      endsAt: draft.endsAt,
+      cancelledAt: null,
+      createdAt: Date.now(),
+    };
+
+    state().maintenanceWindows.set(window.id, window);
+    return cloneMaintenanceWindow(window);
+  }
+
+  async cancelMaintenanceWindow(orgId: string, windowId: string): Promise<MaintenanceWindow | null> {
+    const store = state();
+    const current = store.maintenanceWindows.get(windowId);
+    if (!current || current.orgId !== orgId) return null;
+
+    const next: StoredMaintenanceWindow = { ...current, cancelledAt: current.cancelledAt ?? Date.now() };
+    store.maintenanceWindows.set(windowId, next);
+    return cloneMaintenanceWindow(next);
   }
 }

@@ -8,6 +8,7 @@ import { DeclareIncidentForm } from "@/components/incidents/declare-incident-for
 import { IncidentDrawer } from "@/components/incidents/incident-drawer";
 import { IncidentFilters } from "@/components/incidents/incident-filters";
 import { IncidentTable } from "@/components/incidents/incident-table";
+import { MaintenanceWindowsCard } from "@/components/incidents/maintenance-windows-card";
 import { ComplianceExportCard } from "@/components/compliance/compliance-export-card";
 import { usePermission } from "@/components/system/session-provider";
 import { Button } from "@/components/ui/button";
@@ -169,6 +170,8 @@ export function IncidentsView() {
       </Card>
 
       <AlertRulesCard />
+
+      <MaintenanceWindowsCard />
 
       {mayExport ? <ComplianceExportCard /> : null}
 
